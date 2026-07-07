@@ -36,7 +36,7 @@ object MiniProgramGridBuilder {
         return MiniProgramGrid(rows = rows, columns = columns, points = points)
     }
 
-    internal fun interpolate(
+    fun interpolate(
         lu: MiniProgramGridPoint,
         ld: MiniProgramGridPoint,
         ru: MiniProgramGridPoint,

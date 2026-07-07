@@ -32,6 +32,8 @@ android {
 }
 
 dependencies {
+    implementation(project(":omr-core"))
+
     implementation("androidx.activity:activity-compose:1.12.4")
     implementation("androidx.camera:camera-camera2:1.6.0")
     implementation("androidx.camera:camera-core:1.6.0")

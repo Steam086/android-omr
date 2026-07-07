@@ -137,7 +137,7 @@ object AndroidOmrEngine {
         )
     }
 
-    internal fun scanWithPrecomputedGridForTest(
+    fun scanWithPrecomputedGridForTest(
         frame: MiniProgramFrame,
         template: TemplateState,
         grid: MiniProgramGrid,

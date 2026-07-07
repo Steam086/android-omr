@@ -20,4 +20,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "AnswerCardAndroid"
-include(":app")
+include(":app", ":omr-core", ":omr-cli")
