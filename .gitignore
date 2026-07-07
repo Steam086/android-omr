@@ -9,6 +9,7 @@ build/
 *.iml
 *.iws
 *.ipr
+captures/
 
 # Local config
 local.properties
@@ -21,9 +22,15 @@ local.properties
 app/release/
 app/debug/
 app/build/
+.cxx/
+.externalNativeBuild/
+
+# Local scan/reference captures
+微信图片_*
 
 # Logs
 *.log
+*.hprof
 
 # Keystore / secrets
 *.jks
