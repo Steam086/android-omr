@@ -7,6 +7,7 @@ object AndroidAnswerAreaReader {
         frame: MiniProgramFrame,
         grid: MiniProgramGrid,
         layout: AndroidPaperTemplateLayout,
+        optionLabelsByQuestion: List<List<String>> = emptyList(),
     ): AndroidAnswerAreaReadResult {
         return read(
             frame = frame,
@@ -27,6 +28,9 @@ object AndroidAnswerAreaReader {
                 }
             },
             debugSource = "cellSource=grid",
+            optionLabelResolver = { mapping ->
+                optionLabelsByQuestion.labelFor(mapping)
+            },
         )
     }
 
@@ -34,6 +38,7 @@ object AndroidAnswerAreaReader {
         frame: MiniProgramFrame,
         layout: AndroidPaperTemplateLayout,
         projectedCells: AndroidPaperProjectedCells,
+        optionLabelsByQuestion: List<List<String>> = emptyList(),
     ): AndroidAnswerAreaReadResult {
         return read(
             frame = frame,
@@ -55,6 +60,9 @@ object AndroidAnswerAreaReader {
                 }
             },
             debugSource = "cellSource=templateGeometry",
+            optionLabelResolver = { mapping ->
+                optionLabelsByQuestion.labelFor(mapping)
+            },
         )
     }
 
@@ -63,6 +71,7 @@ object AndroidAnswerAreaReader {
         layout: AndroidPaperTemplateLayout,
         cellResolver: (AndroidPaperQuestionMapping) -> CellResolveResult,
         debugSource: String,
+        optionLabelResolver: (AndroidPaperQuestionMapping) -> String,
     ): AndroidAnswerAreaReadResult {
         val debugInfo = mutableListOf<String>()
         debugInfo += "templateType=${layout.templateType}"
@@ -86,7 +95,7 @@ object AndroidAnswerAreaReader {
             optionResults += AndroidOptionReadResult(
                 questionIndex = mapping.questionIndex,
                 optionIndex = mapping.optionIndex,
-                optionLabel = optionLabel(mapping.optionIndex),
+                optionLabel = optionLabelResolver(mapping),
                 row = mapping.row,
                 column = mapping.column,
                 readResult = readResult,
@@ -153,6 +162,10 @@ object AndroidAnswerAreaReader {
     }
 
     private fun optionLabel(optionIndex: Int): String = OPTION_LABELS[optionIndex]
+
+    private fun List<List<String>>.labelFor(mapping: AndroidPaperQuestionMapping): String =
+        getOrNull(mapping.questionIndex)?.getOrNull(mapping.optionIndex)
+            ?: optionLabel(mapping.optionIndex)
 
     private fun failure(reason: String, debugInfo: List<String>): AndroidAnswerAreaReadResult =
         AndroidAnswerAreaReadResult(

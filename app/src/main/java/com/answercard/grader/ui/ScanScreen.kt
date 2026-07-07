@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,6 +49,7 @@ import com.answercard.grader.template.TemplateGeometry
 import com.answercard.grader.template.TemplateState
 import com.answercard.grader.vision.OmrScanner
 import java.time.LocalDateTime
+import kotlin.math.roundToInt
 
 private const val USE_NEW_ANDROID_OMR_ANALYZER = true
 
@@ -76,6 +78,8 @@ fun ScanScreen(
     var lastHandledKey by remember { mutableStateOf<String?>(null) }
     var displayResult by remember { mutableStateOf<ScanDisplayResult?>(null) }
     var status by remember { mutableStateOf("Scanning") }
+    val currentSoundEnabled = rememberUpdatedState(soundEnabled)
+    val currentTemplateId = rememberUpdatedState(templateId)
     var analysisOrientationModeName by rememberSaveable {
         mutableStateOf(OmrAnalysisOrientationMode.LANDSCAPE_TEMPLATE.name)
     }
@@ -90,6 +94,33 @@ fun ScanScreen(
                 mainHandler.post {
                     displayResult = ScanDisplayResult.fromAndroidOmrResult(result)
                     status = if (result.success) "Recognized" else "Not recognized"
+                    val score = result.score
+                    val examId = result.admissionNumber?.digits
+                    if (result.success && score != null && !examId.isNullOrBlank()) {
+                        val handledKey = "$examId:${score.totalScore}/${score.maxScore}"
+                        if (handledKey != lastHandledKey) {
+                            lastHandledKey = handledKey
+                            recordStore.saveRecord(
+                                ScanRecord(
+                                    templateId = currentTemplateId.value,
+                                    templateName = template.name,
+                                    examId = examId,
+                                    totalScore = score.totalScore.roundToInt(),
+                                    maxScore = score.maxScore.roundToInt(),
+                                    scannedAt = LocalDateTime.now(),
+                                ),
+                            )
+                            if (currentSoundEnabled.value) {
+                                speaker.speak(
+                                    ScoreSpeechText.build(
+                                        totalScore = score.totalScore.roundToInt(),
+                                        maxScore = score.maxScore.roundToInt(),
+                                        examId = examId,
+                                    ),
+                                )
+                            }
+                        }
+                    }
                 }
             },
             onError = { error ->

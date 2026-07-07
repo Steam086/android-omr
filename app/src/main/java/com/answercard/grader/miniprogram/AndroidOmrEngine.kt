@@ -155,10 +155,21 @@ object AndroidOmrEngine {
         projectedCells: AndroidPaperProjectedCells?,
         debugInfo: List<String>,
     ): AndroidOmrResult {
+        val optionLabelsByQuestion = template.questions.map { it.options }
         val answerArea = if (projectedCells == null) {
-            AndroidAnswerAreaReader.read(frame = frame, grid = grid, layout = layout)
+            AndroidAnswerAreaReader.read(
+                frame = frame,
+                grid = grid,
+                layout = layout,
+                optionLabelsByQuestion = optionLabelsByQuestion,
+            )
         } else {
-            AndroidAnswerAreaReader.read(frame = frame, layout = layout, projectedCells = projectedCells)
+            AndroidAnswerAreaReader.read(
+                frame = frame,
+                layout = layout,
+                projectedCells = projectedCells,
+                optionLabelsByQuestion = optionLabelsByQuestion,
+            )
         }
         if (answerArea.failureReason != null) {
             val reason = "answer area failed: ${answerArea.failureReason}"

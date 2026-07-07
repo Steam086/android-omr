@@ -60,11 +60,11 @@ fun CameraPreview(
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
                 .also {
-                    val analyzerForPreview = currentAnalyzer.value
-                    if (analyzerForPreview != null) {
-                        it.setAnalyzer(executor, analyzerForPreview)
-                    } else {
-                        it.setAnalyzer(executor) { image ->
+                    it.setAnalyzer(executor) { image ->
+                        val analyzerForPreview = currentAnalyzer.value
+                        if (analyzerForPreview != null) {
+                            analyzerForPreview.analyze(image)
+                        } else {
                             try {
                                 currentOnFrame.value?.invoke(ImageProxyBitmap.grayscaleBitmap(image))
                             } finally {

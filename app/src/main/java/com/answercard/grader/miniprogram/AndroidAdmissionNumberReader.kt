@@ -120,6 +120,8 @@ object AndroidAdmissionNumberReader {
         val failureReason = when {
             digitResults.any { it.failureReason == "digit must contain 10 candidates" } ->
                 "admission number has incomplete digit candidates"
+            digitResults.any { it.isBlank } ->
+                "admission number contains blank digit"
             else -> null
         }
 
@@ -139,7 +141,7 @@ object AndroidAdmissionNumberReader {
         candidates: List<AndroidAdmissionNumberCandidate>,
     ): AndroidAdmissionDigitReadResult {
         val marked = candidates.filter { it.readResult.isMarked }
-        val selected = (if (marked.isEmpty()) candidates else marked).maxWithOrNull(
+        val selected = marked.maxWithOrNull(
             compareBy<AndroidAdmissionNumberCandidate> { it.readResult.centralBlackCount }
                 .thenBy { it.readResult.cleanedTotalBlackCount }
                 .thenBy { it.readResult.totalBlackCount },
@@ -151,7 +153,7 @@ object AndroidAdmissionNumberReader {
             candidates = candidates,
             isBlank = marked.isEmpty(),
             isMultiMarked = marked.size > 1,
-            failureReason = null,
+            failureReason = if (marked.isEmpty()) "digit is blank" else null,
         )
     }
 

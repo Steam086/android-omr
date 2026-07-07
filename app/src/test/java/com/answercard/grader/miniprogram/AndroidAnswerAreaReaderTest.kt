@@ -47,6 +47,22 @@ class AndroidAnswerAreaReaderTest {
     }
 
     @Test
+    fun usesTemplateOptionLabelsWhenProvided() {
+        val fixture = Fixture(questionCount = 1, optionCounts = listOf(2))
+        fixture.mark(questionIndex = 0, optionIndex = 0)
+
+        val result = AndroidAnswerAreaReader.read(
+            frame = fixture.frame(),
+            grid = fixture.grid,
+            layout = fixture.layout,
+            optionLabelsByQuestion = listOf(listOf("T", "F")),
+        )
+
+        assertNull(result.failureReason)
+        assertQuestion(result, questionIndex = 0, selectedOptions = listOf(0), selectedLabels = listOf("T"))
+    }
+
+    @Test
     fun keepsMultipleMarkedOptionsWithoutScoring() {
         val fixture = Fixture(questionCount = 1)
         fixture.mark(questionIndex = 0, optionIndex = 0)
@@ -151,8 +167,11 @@ class AndroidAnswerAreaReaderTest {
         return question
     }
 
-    private class Fixture(questionCount: Int) {
-        val layout: AndroidPaperTemplateLayout = AndroidPaperTemplateBuilder.build(List(questionCount) { 4 })
+    private class Fixture(
+        questionCount: Int,
+        optionCounts: List<Int> = List(questionCount) { 4 },
+    ) {
+        val layout: AndroidPaperTemplateLayout = AndroidPaperTemplateBuilder.build(optionCounts)
         val grid: MiniProgramGrid
         private val width = layout.gridColumns * CELL_SIZE
         private val height = layout.gridRows * CELL_SIZE

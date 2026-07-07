@@ -38,10 +38,12 @@ object AndroidOmrScoreCalculator {
     ): AndroidOmrScoreItem {
         val questionIndex = question.number - 1
         val expectedLabels = expectedLabels(question)
+        val expectedOptions = expectedOptionIndexes(question)
+        val selectedOptions = selectedOptionIndexes(question, recognized)
         val selectedLabels = recognized?.selectedLabels.orEmpty()
         val score = question.score.toDouble()
         val warning = when {
-            expectedLabels.isEmpty() -> "question has no expected answer"
+            expectedOptions.isEmpty() -> "question has no expected answer"
             recognized == null -> "recognized question is missing"
             else -> null
         }
@@ -49,8 +51,8 @@ object AndroidOmrScoreCalculator {
             warning == "question has no expected answer" -> 0.0
             warning == "recognized question is missing" -> 0.0
             recognized == null -> 0.0
-            question.type == QuestionType.MULTIPLE -> scoreMultipleChoice(question, expectedLabels, selectedLabels)
-            selectedLabels == expectedLabels -> score
+            question.type == QuestionType.MULTIPLE -> scoreMultipleChoice(question, expectedOptions, selectedOptions)
+            selectedOptions == expectedOptions -> score
             else -> 0.0
         }
 
@@ -69,11 +71,11 @@ object AndroidOmrScoreCalculator {
 
     private fun scoreMultipleChoice(
         question: QuestionSetting,
-        expectedLabels: List<String>,
-        selectedLabels: List<String>,
+        expectedOptions: List<Int>,
+        selectedOptions: List<Int>,
     ): Double {
-        val expected = expectedLabels.toSet()
-        val selected = selectedLabels.toSet()
+        val expected = expectedOptions.toSet()
+        val selected = selectedOptions.toSet()
         if (selected == expected) return question.score.toDouble()
         if (selected.isEmpty()) return 0.0
         if (!expected.containsAll(selected)) return 0.0
@@ -84,5 +86,26 @@ object AndroidOmrScoreCalculator {
         val answer = question.answer.trim()
         if (answer.isEmpty()) return emptyList()
         return question.options.filter { label -> answer.contains(label) }
+    }
+
+    private fun expectedOptionIndexes(question: QuestionSetting): List<Int> {
+        val answer = question.answer.trim()
+        if (answer.isEmpty()) return emptyList()
+        return question.options.mapIndexedNotNull { index, label ->
+            index.takeIf { answer.contains(label) }
+        }
+    }
+
+    private fun selectedOptionIndexes(
+        question: QuestionSetting,
+        recognized: AndroidQuestionReadResult?,
+    ): List<Int> {
+        if (recognized == null) return emptyList()
+        if (recognized.selectedOptions.isNotEmpty() || recognized.selectedLabels.isEmpty()) {
+            return recognized.selectedOptions
+        }
+        return recognized.selectedLabels.mapNotNull { label ->
+            question.options.indexOf(label).takeIf { it >= 0 }
+        }
     }
 }

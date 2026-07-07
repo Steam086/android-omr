@@ -166,6 +166,22 @@ class AndroidOmrScoreCalculatorTest {
     }
 
     @Test
+    fun scoresTwoOptionQuestionByOptionIndexWhenReaderLabelsAreGeneric() {
+        val result = AndroidOmrScoreCalculator.score(
+            template = template(QuestionSetting(number = 1, answer = "T", score = 2, optionCount = 2)),
+            answerArea = answerArea(
+                question(
+                    questionIndex = 0,
+                    selectedOptions = listOf(0),
+                    selectedLabels = listOf("A"),
+                ),
+            ),
+        )
+
+        assertEquals(2.0, result.items.single().earnedScore, 0.0)
+    }
+
+    @Test
     fun reportsWarningWhenQuestionHasNoExpectedAnswer() {
         val result = AndroidOmrScoreCalculator.score(
             template = template(QuestionSetting(number = 1, answer = "", score = 2)),
@@ -255,13 +271,23 @@ class AndroidOmrScoreCalculatorTest {
     private fun question(
         questionIndex: Int,
         selectedLabels: List<String>,
+        selectedOptions: List<Int> = selectedLabels.map(::optionIndexForLabel),
     ): AndroidQuestionReadResult =
         AndroidQuestionReadResult(
             questionIndex = questionIndex,
-            selectedOptions = selectedLabels.mapIndexed { index, _ -> index },
+            selectedOptions = selectedOptions,
             selectedLabels = selectedLabels,
             optionResults = emptyList(),
             isBlank = selectedLabels.isEmpty(),
             isMultiMarked = selectedLabels.size > 1,
         )
+
+    private fun optionIndexForLabel(label: String): Int =
+        when (label) {
+            "A", "T" -> 0
+            "B", "F" -> 1
+            "C" -> 2
+            "D" -> 3
+            else -> -1
+        }
 }
