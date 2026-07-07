@@ -1,0 +1,484 @@
+package com.answercard.grader.miniprogram
+
+import com.answercard.grader.template.TemplateGeometry
+import com.answercard.grader.template.TemplateState
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
+
+object AndroidOmrEngine {
+    private const val MIN_PROJECTED_CELL_SIZE = 16
+    private const val MIN_CARD_WIDTH = 160.0
+    private const val MIN_CARD_HEIGHT = 120.0
+    private const val MIN_CARD_AREA = 18_000.0
+    private const val MAX_ASPECT_RELATIVE_DEVIATION = 0.55
+    private const val MIN_ANCHOR_BORDER_INSET = 4
+    private const val MIN_CARD_INTERIOR_BRIGHTNESS = 65.0
+    private const val MIN_CARD_INTERIOR_ANCHOR_CONTRAST = 20.0
+
+    fun scan(
+        frame: MiniProgramFrame,
+        template: TemplateState,
+    ): AndroidOmrResult {
+        val layoutResult = buildLayout(template)
+        val layout = layoutResult.layout ?: return layoutResult.toResult()
+        val debugInfo = mutableListOf<String>()
+        debugInfo += layoutResult.debugInfo
+
+        val cornerMatch = CornerAnchorMatcher.findAnchorsWithDiagnostics(frame)
+        val cornerDebugInfo = cornerMatch.diagnostics.debugInfo()
+        val anchors = cornerMatch.anchors
+            ?: return AndroidOmrResult(
+                success = false,
+                failureReason = "corner anchors not found",
+                layout = layout,
+                anchors = null,
+                grid = null,
+                answerArea = null,
+                admissionNumber = null,
+                score = null,
+                warnings = emptyList(),
+                debugInfo = debugInfo + cornerDebugInfo + "failureStage=corner" + "corner anchors not found",
+            )
+
+        val grid = try {
+            MiniProgramGridBuilder.build(
+                lu = anchors.lu.point,
+                ld = anchors.ld.point,
+                ru = anchors.ru.point,
+                rd = anchors.rd.point,
+                rows = layout.gridRows,
+                columns = layout.gridColumns,
+            )
+        } catch (error: IllegalArgumentException) {
+            val reason = "grid failed: ${error.message}"
+            return AndroidOmrResult(
+                success = false,
+                failureReason = reason,
+                layout = layout,
+                anchors = anchors,
+                grid = null,
+                answerArea = null,
+                admissionNumber = null,
+                score = null,
+                warnings = emptyList(),
+                debugInfo = debugInfo + cornerDebugInfo + "failureStage=grid" + reason,
+            )
+        }
+        val cardGeometry = CardGeometry.from(template = template, anchors = anchors, frame = frame)
+        val geometryDebugInfo = cardGeometry.debugInfo()
+        val geometryFailure = cardGeometry.failureReason()
+        if (geometryFailure != null) {
+            val reason = if (geometryFailure == "anchors touch frame border") {
+                "invalid card geometry: anchors touch frame border"
+            } else {
+                "invalid card geometry: possible false anchors"
+            }
+            return AndroidOmrResult(
+                success = false,
+                failureReason = reason,
+                layout = layout,
+                anchors = anchors,
+                grid = grid,
+                answerArea = null,
+                admissionNumber = null,
+                score = null,
+                warnings = emptyList(),
+                debugInfo = debugInfo + cornerDebugInfo + "grid=${layout.gridRows}x${layout.gridColumns}" +
+                    geometryDebugInfo + "failureStage=geometry validation" + "failureDetail=$geometryFailure" +
+                    "geometryRejectionReason=$geometryFailure",
+            )
+        }
+        val projectedCells = AndroidPaperProjectedCellBuilder.build(
+            template = template,
+            layout = layout,
+            anchors = anchors,
+        )
+        val cellValidation = ProjectedCellSizeValidation.from(projectedCells)
+        val cellValidationDebugInfo = cellValidation.debugInfo()
+        if (!cellValidation.isValid) {
+            val reason = "projected cell too small: Q1A=${cellValidation.q1A.width}x${cellValidation.q1A.height}, " +
+                "min answer cell = ${cellValidation.minAnswer.width}x${cellValidation.minAnswer.height}, " +
+                "min admission cell = ${cellValidation.minAdmission.width}x${cellValidation.minAdmission.height}"
+            return AndroidOmrResult(
+                success = false,
+                failureReason = reason,
+                layout = layout,
+                anchors = anchors,
+                grid = grid,
+                answerArea = null,
+                admissionNumber = null,
+                score = null,
+                warnings = emptyList(),
+                debugInfo = debugInfo + cornerDebugInfo + "grid=${layout.gridRows}x${layout.gridColumns}" +
+                    geometryDebugInfo + projectedCells.debugInfo + cellValidationDebugInfo +
+                    "failureStage=cell size validation" + reason,
+            )
+        }
+
+        return scanWithLayoutAndGrid(
+            frame = frame,
+            template = template,
+            layout = layout,
+            anchors = anchors,
+            grid = grid,
+            projectedCells = projectedCells,
+            debugInfo = debugInfo + cornerDebugInfo + "grid=${layout.gridRows}x${layout.gridColumns}" +
+                geometryDebugInfo + projectedCells.debugInfo + cellValidationDebugInfo,
+        )
+    }
+
+    internal fun scanWithPrecomputedGridForTest(
+        frame: MiniProgramFrame,
+        template: TemplateState,
+        grid: MiniProgramGrid,
+    ): AndroidOmrResult {
+        val layoutResult = buildLayout(template)
+        val layout = layoutResult.layout ?: return layoutResult.toResult()
+        return scanWithLayoutAndGrid(
+            frame = frame,
+            template = template,
+            layout = layout,
+            anchors = null,
+            grid = grid,
+            projectedCells = null,
+            debugInfo = layoutResult.debugInfo + "grid=precomputed",
+        )
+    }
+
+    private fun scanWithLayoutAndGrid(
+        frame: MiniProgramFrame,
+        template: TemplateState,
+        layout: AndroidPaperTemplateLayout,
+        anchors: MiniProgramAnchors?,
+        grid: MiniProgramGrid,
+        projectedCells: AndroidPaperProjectedCells?,
+        debugInfo: List<String>,
+    ): AndroidOmrResult {
+        val answerArea = if (projectedCells == null) {
+            AndroidAnswerAreaReader.read(frame = frame, grid = grid, layout = layout)
+        } else {
+            AndroidAnswerAreaReader.read(frame = frame, layout = layout, projectedCells = projectedCells)
+        }
+        if (answerArea.failureReason != null) {
+            val reason = "answer area failed: ${answerArea.failureReason}"
+            return AndroidOmrResult(
+                success = false,
+                failureReason = reason,
+                layout = layout,
+                anchors = anchors,
+                grid = grid,
+                answerArea = answerArea,
+                admissionNumber = null,
+                score = null,
+                warnings = emptyList(),
+                debugInfo = debugInfo + "failureStage=answer" + reason,
+            )
+        }
+
+        val score = AndroidOmrScoreCalculator.score(template = template, answerArea = answerArea)
+        val admissionNumber = if (projectedCells == null) {
+            AndroidAdmissionNumberReader.read(frame = frame, grid = grid, layout = layout)
+        } else {
+            AndroidAdmissionNumberReader.read(frame = frame, layout = layout, projectedCells = projectedCells)
+        }
+        val warnings = score.warnings.toMutableList()
+        if (admissionNumber.failureReason != null) {
+            warnings += "admission number: ${admissionNumber.failureReason}"
+        }
+        val failureReason = when {
+            admissionNumber.failureReason != null -> "admission number failed: ${admissionNumber.failureReason}"
+            score.warnings.isNotEmpty() -> "score warnings: ${score.warnings.joinToString()}"
+            else -> null
+        }
+
+        return AndroidOmrResult(
+            success = failureReason == null,
+            failureReason = failureReason,
+            layout = layout,
+            anchors = anchors,
+            grid = grid,
+            answerArea = answerArea,
+            admissionNumber = admissionNumber,
+            score = score,
+            warnings = warnings,
+            debugInfo = if (failureReason == null) {
+                debugInfo + "scan success"
+            } else {
+                debugInfo + failureStage(failureReason) + failureReason
+            },
+        )
+    }
+
+    private fun buildLayout(template: TemplateState): LayoutBuildResult =
+        try {
+            LayoutBuildResult(
+                layout = AndroidPaperTemplateBuilder.build(
+                    questionOptionCounts = template.questions.map { it.optionCount },
+                    admissionNumberDigits = template.examIdDigits,
+                ),
+                failureReason = null,
+                debugInfo = listOf("layout built"),
+            )
+        } catch (error: IllegalArgumentException) {
+            LayoutBuildResult(
+                layout = null,
+                failureReason = "layout failed: ${error.message}",
+                debugInfo = listOf("layout failed: ${error.message}"),
+            )
+        }
+
+    private data class LayoutBuildResult(
+        val layout: AndroidPaperTemplateLayout?,
+        val failureReason: String?,
+        val debugInfo: List<String>,
+    ) {
+        fun toResult(): AndroidOmrResult =
+            AndroidOmrResult(
+                success = false,
+                failureReason = failureReason,
+                layout = layout,
+                anchors = null,
+                grid = null,
+                answerArea = null,
+                admissionNumber = null,
+                score = null,
+                warnings = emptyList(),
+                debugInfo = debugInfo,
+            )
+    }
+
+    private data class CardGeometry(
+        val width: Int,
+        val height: Int,
+        val area: Int,
+        val aspectRatio: Double,
+        val expectedTemplateRatio: Double,
+        val frameWidth: Int,
+        val frameHeight: Int,
+        val lu: MiniProgramPoint,
+        val ru: MiniProgramPoint,
+        val ld: MiniProgramPoint,
+        val rd: MiniProgramPoint,
+        val cardInteriorBrightness: Double,
+        val cornerAnchorBrightness: Double,
+    ) {
+        private val cardInteriorContrast: Double get() = cardInteriorBrightness - cornerAnchorBrightness
+        private val cardInteriorValidationPassed: Boolean get() =
+            cardInteriorBrightness >= MIN_CARD_INTERIOR_BRIGHTNESS &&
+                cardInteriorContrast >= MIN_CARD_INTERIOR_ANCHOR_CONTRAST
+
+        fun failureReason(): String? {
+            if (listOf(lu, ru, ld, rd).any { it.touchesFrameBorder(frameWidth, frameHeight) }) {
+                return "anchors touch frame border"
+            }
+            if (width < MIN_CARD_WIDTH || height < MIN_CARD_HEIGHT || area < MIN_CARD_AREA) {
+                return "card quad too small: width=$width, height=$height, area=$area"
+            }
+            if (lu.column >= ru.column || ld.column >= rd.column || lu.row >= ld.row || ru.row >= rd.row) {
+                return "anchor order is invalid"
+            }
+            val relativeDeviation = abs(aspectRatio - expectedTemplateRatio) / expectedTemplateRatio
+            if (relativeDeviation > MAX_ASPECT_RELATIVE_DEVIATION) {
+                return "card aspect ratio out of range: actual=$aspectRatio, expected=$expectedTemplateRatio"
+            }
+            if (!cardInteriorValidationPassed) {
+                return "card interior too dark or low contrast"
+            }
+            return null
+        }
+
+        fun debugInfo(): List<String> =
+            listOf(
+                "anchors=found",
+                "anchorLU=${lu.column},${lu.row}",
+                "anchorRU=${ru.column},${ru.row}",
+                "anchorLD=${ld.column},${ld.row}",
+                "anchorRD=${rd.column},${rd.row}",
+                "anchorQuadWidth=$width",
+                "anchorQuadHeight=$height",
+                "anchorQuadArea=$area",
+                "anchorAspectRatio=${format(aspectRatio)}",
+                "expectedTemplateRatio=${format(expectedTemplateRatio)}",
+                "anchorBorderInset=$MIN_ANCHOR_BORDER_INSET",
+                "cardInteriorBrightness=${format(cardInteriorBrightness)}",
+                "cornerAnchorBrightness=${format(cornerAnchorBrightness)}",
+                "cardInteriorContrast=${format(cardInteriorContrast)}",
+                "cardInteriorValidationPassed=$cardInteriorValidationPassed",
+            )
+
+        companion object {
+            fun from(template: TemplateState, anchors: MiniProgramAnchors, frame: MiniProgramFrame): CardGeometry {
+                val cardLayout = TemplateGeometry.buildLayout(template)
+                val lu = anchors.lu.point
+                val ru = anchors.ru.point
+                val ld = anchors.ld.point
+                val rd = anchors.rd.point
+                val width = averageDistance(lu, ru, ld, rd).roundToInt()
+                val height = averageDistance(lu, ld, ru, rd).roundToInt()
+                val area = quadArea(lu, ru, rd, ld).roundToInt()
+                return CardGeometry(
+                    width = width,
+                    height = height,
+                    area = area,
+                    aspectRatio = width.toDouble() / height.coerceAtLeast(1).toDouble(),
+                    expectedTemplateRatio = TemplateGeometry.renderedWidth(cardLayout).toDouble() /
+                        TemplateGeometry.renderedHeight(cardLayout).toDouble(),
+                    frameWidth = frame.width,
+                    frameHeight = frame.height,
+                    lu = lu,
+                    ru = ru,
+                    ld = ld,
+                    rd = rd,
+                    cardInteriorBrightness = cardInteriorMean(frame = frame, lu = lu, ru = ru, ld = ld, rd = rd),
+                    cornerAnchorBrightness = cornerAnchorMean(frame = frame, anchors = anchors),
+                )
+            }
+        }
+    }
+
+    private fun cardInteriorMean(
+        frame: MiniProgramFrame,
+        lu: MiniProgramPoint,
+        ru: MiniProgramPoint,
+        ld: MiniProgramPoint,
+        rd: MiniProgramPoint,
+    ): Double {
+        val left = ((lu.column + ld.column) / 2.0 + (averageDistance(lu, ru, ld, rd) * 0.35)).roundToInt()
+        val right = ((ru.column + rd.column) / 2.0 - (averageDistance(lu, ru, ld, rd) * 0.35)).roundToInt()
+        val top = ((lu.row + ru.row) / 2.0 + (averageDistance(lu, ld, ru, rd) * 0.35)).roundToInt()
+        val bottom = ((ld.row + rd.row) / 2.0 - (averageDistance(lu, ld, ru, rd) * 0.35)).roundToInt()
+        return rectMean(frame, left = left, top = top, right = right, bottom = bottom)
+    }
+
+    private fun cornerAnchorMean(frame: MiniProgramFrame, anchors: MiniProgramAnchors): Double {
+        val means = listOf(anchors.lu, anchors.ld, anchors.ru, anchors.rd).map { candidate ->
+            pointMean(frame = frame, point = candidate.point, radius = 6)
+        }
+        return means.average()
+    }
+
+    private fun MiniProgramPoint.touchesFrameBorder(frameWidth: Int, frameHeight: Int): Boolean =
+        column <= MIN_ANCHOR_BORDER_INSET ||
+            row <= MIN_ANCHOR_BORDER_INSET ||
+            column >= frameWidth - 1 - MIN_ANCHOR_BORDER_INSET ||
+            row >= frameHeight - 1 - MIN_ANCHOR_BORDER_INSET
+
+    private fun pointMean(frame: MiniProgramFrame, point: MiniProgramPoint, radius: Int): Double =
+        rectMean(
+            frame = frame,
+            left = point.column - radius,
+            top = point.row - radius,
+            right = point.column + radius + 1,
+            bottom = point.row + radius + 1,
+        )
+
+    private fun rectMean(
+        frame: MiniProgramFrame,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+    ): Double {
+        val clampedLeft = left.coerceIn(0, frame.width)
+        val clampedRight = right.coerceIn(0, frame.width)
+        val clampedTop = top.coerceIn(0, frame.height)
+        val clampedBottom = bottom.coerceIn(0, frame.height)
+        var sum = 0L
+        var count = 0
+        for (row in clampedTop until clampedBottom) {
+            for (column in clampedLeft until clampedRight) {
+                sum += frame[row, column]
+                count += 1
+            }
+        }
+        return if (count == 0) 0.0 else sum.toDouble() / count.toDouble()
+    }
+
+    private data class CellSize(
+        val width: Int,
+        val height: Int,
+    )
+
+    private data class ProjectedCellSizeValidation(
+        val minAnswer: CellSize,
+        val minAdmission: CellSize,
+        val q1A: CellSize,
+    ) {
+        val isValid: Boolean =
+            minAnswer.width >= MIN_PROJECTED_CELL_SIZE &&
+                minAnswer.height >= MIN_PROJECTED_CELL_SIZE &&
+                minAdmission.width >= MIN_PROJECTED_CELL_SIZE &&
+                minAdmission.height >= MIN_PROJECTED_CELL_SIZE
+
+        fun debugInfo(): List<String> =
+            listOf(
+                "minAnswerCell=${minAnswer.width}x${minAnswer.height}",
+                "minAdmissionCell=${minAdmission.width}x${minAdmission.height}",
+                "q1AProjectedCell=${q1A.width}x${q1A.height}",
+            )
+
+        companion object {
+            fun from(projectedCells: AndroidPaperProjectedCells): ProjectedCellSizeValidation {
+                val answerSizes = projectedCells.questionCells.values.map(::cellSize)
+                val admissionSizes = projectedCells.admissionNumberCells.values.map(::cellSize)
+                return ProjectedCellSizeValidation(
+                    minAnswer = minCellSize(answerSizes),
+                    minAdmission = minCellSize(admissionSizes),
+                    q1A = projectedCells.questionCells[AndroidPaperQuestionCellKey(questionIndex = 0, optionIndex = 0)]
+                        ?.let(::cellSize)
+                        ?: CellSize(width = 0, height = 0),
+                )
+            }
+        }
+    }
+
+    private fun minCellSize(sizes: List<CellSize>): CellSize =
+        if (sizes.isEmpty()) {
+            CellSize(width = 0, height = 0)
+        } else {
+            CellSize(
+                width = sizes.minOf { it.width },
+                height = sizes.minOf { it.height },
+            )
+        }
+
+    private fun cellSize(cell: MiniProgramCell): CellSize =
+        CellSize(
+            width = ((distance(cell.leftTop, cell.rightTop) + distance(cell.leftBottom, cell.rightBottom)) / 2.0)
+                .roundToInt()
+                .coerceAtLeast(1),
+            height = ((distance(cell.leftTop, cell.leftBottom) + distance(cell.rightTop, cell.rightBottom)) / 2.0)
+                .roundToInt()
+                .coerceAtLeast(1),
+        )
+
+    private fun averageDistance(a1: MiniProgramPoint, a2: MiniProgramPoint, b1: MiniProgramPoint, b2: MiniProgramPoint): Double =
+        (distance(a1, a2) + distance(b1, b2)) / 2.0
+
+    private fun distance(a: MiniProgramPoint, b: MiniProgramPoint): Double =
+        sqrt((a.column - b.column).toDouble() * (a.column - b.column).toDouble() + (a.row - b.row).toDouble() * (a.row - b.row).toDouble())
+
+    private fun distance(a: MiniProgramGridPoint, b: MiniProgramGridPoint): Double =
+        sqrt((a.column - b.column) * (a.column - b.column) + (a.row - b.row) * (a.row - b.row))
+
+    private fun quadArea(vararg points: MiniProgramPoint): Double {
+        var twiceArea = 0.0
+        for (index in points.indices) {
+            val current = points[index]
+            val next = points[(index + 1) % points.size]
+            twiceArea += current.column * next.row - current.row * next.column
+        }
+        return abs(twiceArea) / 2.0
+    }
+
+    private fun format(value: Double): String =
+        "%.3f".format(java.util.Locale.US, value)
+
+    private fun failureStage(failureReason: String): String =
+        when {
+            failureReason.startsWith("admission number failed:") -> "failureStage=admission"
+            failureReason.startsWith("score warnings:") -> "failureStage=score"
+            else -> "failureStage=unknown"
+        }
+}
