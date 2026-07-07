@@ -25,7 +25,10 @@ object AndroidOmrEngine {
         val debugInfo = mutableListOf<String>()
         debugInfo += layoutResult.debugInfo
 
-        val cornerMatch = CornerAnchorMatcher.findAnchorsWithDiagnostics(frame)
+        val cornerMatch = CornerAnchorMatcher.findAnchorsWithDiagnostics(
+            frame = frame,
+            expectedAspectRatio = expectedRenderedAspectRatio(template),
+        )
         val cornerDebugInfo = cornerMatch.diagnostics.debugInfo()
         val anchors = cornerMatch.anchors
             ?: return AndroidOmrResult(
@@ -94,6 +97,11 @@ object AndroidOmrEngine {
             layout = layout,
             anchors = anchors,
         )
+        val solidMarks = AndroidSolidMarkDetector.detect(
+            frame = frame,
+            template = template,
+            anchors = anchors,
+        )
         val cellValidation = ProjectedCellSizeValidation.from(projectedCells)
         val cellValidationDebugInfo = cellValidation.debugInfo()
         if (!cellValidation.isValid) {
@@ -123,8 +131,9 @@ object AndroidOmrEngine {
             anchors = anchors,
             grid = grid,
             projectedCells = projectedCells,
+            solidMarks = solidMarks,
             debugInfo = debugInfo + cornerDebugInfo + "grid=${layout.gridRows}x${layout.gridColumns}" +
-                geometryDebugInfo + projectedCells.debugInfo + cellValidationDebugInfo,
+                geometryDebugInfo + projectedCells.debugInfo + solidMarks.debugInfo + cellValidationDebugInfo,
         )
     }
 
@@ -153,6 +162,7 @@ object AndroidOmrEngine {
         anchors: MiniProgramAnchors?,
         grid: MiniProgramGrid,
         projectedCells: AndroidPaperProjectedCells?,
+        solidMarks: AndroidSolidMarkOverlay? = null,
         debugInfo: List<String>,
     ): AndroidOmrResult {
         val optionLabelsByQuestion = template.questions.map { it.options }
@@ -169,6 +179,7 @@ object AndroidOmrEngine {
                 layout = layout,
                 projectedCells = projectedCells,
                 optionLabelsByQuestion = optionLabelsByQuestion,
+                solidMarks = solidMarks,
             )
         }
         if (answerArea.failureReason != null) {
@@ -191,7 +202,12 @@ object AndroidOmrEngine {
         val admissionNumber = if (projectedCells == null) {
             AndroidAdmissionNumberReader.read(frame = frame, grid = grid, layout = layout)
         } else {
-            AndroidAdmissionNumberReader.read(frame = frame, layout = layout, projectedCells = projectedCells)
+            AndroidAdmissionNumberReader.read(
+                frame = frame,
+                layout = layout,
+                projectedCells = projectedCells,
+                solidMarks = solidMarks,
+            )
         }
         val warnings = score.warnings.toMutableList()
         if (admissionNumber.failureReason != null) {
@@ -238,6 +254,12 @@ object AndroidOmrEngine {
                 debugInfo = listOf("layout failed: ${error.message}"),
             )
         }
+
+    private fun expectedRenderedAspectRatio(template: TemplateState): Double {
+        val cardLayout = TemplateGeometry.buildLayout(template)
+        return TemplateGeometry.renderedWidth(cardLayout).toDouble() /
+            TemplateGeometry.renderedHeight(cardLayout).toDouble()
+    }
 
     private data class LayoutBuildResult(
         val layout: AndroidPaperTemplateLayout?,

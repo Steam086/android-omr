@@ -39,6 +39,7 @@ object AndroidAnswerAreaReader {
         layout: AndroidPaperTemplateLayout,
         projectedCells: AndroidPaperProjectedCells,
         optionLabelsByQuestion: List<List<String>> = emptyList(),
+        solidMarks: AndroidSolidMarkOverlay? = null,
     ): AndroidAnswerAreaReadResult {
         return read(
             frame = frame,
@@ -63,6 +64,10 @@ object AndroidAnswerAreaReader {
             optionLabelResolver = { mapping ->
                 optionLabelsByQuestion.labelFor(mapping)
             },
+            solidMarkResolver = solidMarks
+                ?.takeIf { it.hasQuestionMarks }
+                ?.let { marks -> { mapping -> marks.isQuestionMarked(mapping) } },
+            solidMarkDebugInfo = solidMarks?.debugInfo.orEmpty(),
         )
     }
 
@@ -72,12 +77,15 @@ object AndroidAnswerAreaReader {
         cellResolver: (AndroidPaperQuestionMapping) -> CellResolveResult,
         debugSource: String,
         optionLabelResolver: (AndroidPaperQuestionMapping) -> String,
+        solidMarkResolver: (((AndroidPaperQuestionMapping) -> Boolean))? = null,
+        solidMarkDebugInfo: List<String> = emptyList(),
     ): AndroidAnswerAreaReadResult {
         val debugInfo = mutableListOf<String>()
         debugInfo += "templateType=${layout.templateType}"
         debugInfo += "questionMappings=${layout.questionMappings.size}"
         debugInfo += "edgeCleanDirections=none"
         debugInfo += debugSource
+        debugInfo += solidMarkDebugInfo
 
         val optionResults = mutableListOf<AndroidOptionReadResult>()
         layout.questionMappings.forEach { mapping ->
@@ -92,13 +100,17 @@ object AndroidAnswerAreaReader {
                 )
             }
 
+            val effectiveReadResult = solidMarkResolver?.let { resolver ->
+                readResult.copy(isMarked = resolver(mapping))
+            } ?: readResult
+
             optionResults += AndroidOptionReadResult(
                 questionIndex = mapping.questionIndex,
                 optionIndex = mapping.optionIndex,
                 optionLabel = optionLabelResolver(mapping),
                 row = mapping.row,
                 column = mapping.column,
-                readResult = readResult,
+                readResult = effectiveReadResult,
             )
         }
 

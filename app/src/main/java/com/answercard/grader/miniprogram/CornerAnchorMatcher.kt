@@ -1,5 +1,7 @@
 package com.answercard.grader.miniprogram
 
+import kotlin.math.abs
+
 enum class MiniProgramCornerKind {
     LU,
     LD,
@@ -85,9 +87,14 @@ object CornerAnchorMatcher {
     private const val LOCAL_THRESHOLD_RADIUS_LARGE = 36
     private const val LOCAL_CONTRAST_DELTA = 40
     private const val MAX_SCAN_CANDIDATES_PER_KIND = 36
+    private const val MAX_ANCHOR_CHOICES_PER_KIND = 12
 
-    fun findAnchors(frame: MiniProgramFrame, thresholdOffset: Int = DEFAULT_THRESHOLD_OFFSET): MiniProgramAnchors? =
-        findAnchorsWithDiagnostics(frame, thresholdOffset).anchors
+    fun findAnchors(
+        frame: MiniProgramFrame,
+        thresholdOffset: Int = DEFAULT_THRESHOLD_OFFSET,
+        expectedAspectRatio: Double? = null,
+    ): MiniProgramAnchors? =
+        findAnchorsWithDiagnostics(frame, thresholdOffset, expectedAspectRatio).anchors
 
     fun findCandidatesForTest(
         frame: MiniProgramFrame,
@@ -98,6 +105,7 @@ object CornerAnchorMatcher {
     fun findAnchorsWithDiagnostics(
         frame: MiniProgramFrame,
         thresholdOffset: Int = DEFAULT_THRESHOLD_OFFSET,
+        expectedAspectRatio: Double? = null,
     ): CornerAnchorMatchResult {
         val totalStartedAt = System.nanoTime()
         val threshold = MiniProgramGeometry.threshold(frame, thresholdOffset)
@@ -108,7 +116,7 @@ object CornerAnchorMatcher {
         val rd = findCandidates(frame, MiniProgramCornerKind.RD, threshold, includeTraceScan = false)
         val cornerElapsedMs = elapsedMs(cornerStartedAt)
         val searches = listOf(lu, ld, ru, rd)
-        val componentAnchors = chooseAnchors(lu.candidates, ld.candidates, ru.candidates, rd.candidates)
+        val componentAnchors = chooseAnchors(lu.candidates, ld.candidates, ru.candidates, rd.candidates, expectedAspectRatio)
         if (componentAnchors != null) {
             return CornerAnchorMatchResult(
                 anchors = componentAnchors,
@@ -128,7 +136,13 @@ object CornerAnchorMatcher {
         val traceRd = findCandidates(frame, MiniProgramCornerKind.RD, threshold, includeTraceScan = true)
         val traceCornerElapsedMs = cornerElapsedMs + elapsedMs(traceStartedAt)
         val traceSearches = listOf(traceLu, traceLd, traceRu, traceRd)
-        val best = chooseAnchors(traceLu.candidates, traceLd.candidates, traceRu.candidates, traceRd.candidates)
+        val best = chooseAnchors(
+            traceLu.candidates,
+            traceLd.candidates,
+            traceRu.candidates,
+            traceRd.candidates,
+            expectedAspectRatio,
+        )
         return CornerAnchorMatchResult(
             anchors = best,
             diagnostics = diagnostics(
@@ -145,17 +159,18 @@ object CornerAnchorMatcher {
         ld: List<MiniProgramCornerCandidate>,
         ru: List<MiniProgramCornerCandidate>,
         rd: List<MiniProgramCornerCandidate>,
+        expectedAspectRatio: Double?,
     ): MiniProgramAnchors? {
         if (lu.isEmpty() || ld.isEmpty() || ru.isEmpty() || rd.isEmpty()) return null
         var best: MiniProgramAnchors? = null
-        var bestScore = Int.MIN_VALUE
-        for (a in lu.take(12)) {
-            for (b in ld.take(12)) {
-                for (c in ru.take(12)) {
-                    for (d in rd.take(12)) {
+        var bestScore = Double.NEGATIVE_INFINITY
+        for (a in lu.take(MAX_ANCHOR_CHOICES_PER_KIND)) {
+            for (b in ld.take(MAX_ANCHOR_CHOICES_PER_KIND)) {
+                for (c in ru.take(MAX_ANCHOR_CHOICES_PER_KIND)) {
+                    for (d in rd.take(MAX_ANCHOR_CHOICES_PER_KIND)) {
                         val check = MiniProgramGeometry.isQuad(a.point, b.point, c.point, d.point)
                         if (!check.accepted) continue
-                        val score = minOf(a.length, b.length, c.length, d.length)
+                        val score = anchorScore(a, b, c, d, check, expectedAspectRatio)
                         if (score > bestScore) {
                             bestScore = score
                             best = MiniProgramAnchors(a, b, c, d, check)
@@ -166,6 +181,78 @@ object CornerAnchorMatcher {
         }
         return best
     }
+
+    private fun anchorScore(
+        lu: MiniProgramCornerCandidate,
+        ld: MiniProgramCornerCandidate,
+        ru: MiniProgramCornerCandidate,
+        rd: MiniProgramCornerCandidate,
+        check: MiniProgramQuadCheck,
+        expectedAspectRatio: Double?,
+    ): Double {
+        val minLength = minOf(lu.length, ld.length, ru.length, rd.length).toDouble()
+        val averageLength = (lu.length + ld.length + ru.length + rd.length) / 4.0
+        val edgeSkewPenalty = edgeSkewPenalty(lu.point, ld.point, ru.point, rd.point)
+        val quadPenalty = check.diagonalRelativeDeviation +
+            check.upDownRelativeDeviation +
+            check.leftRightRelativeDeviation
+        val aspectPenalty = expectedAspectRatio?.let { expected ->
+            val actual = aspectRatio(lu.point, ld.point, ru.point, rd.point)
+            relativeDeviation(actual, expected)
+        } ?: 0.0
+        val componentBonus = listOf(lu, ld, ru, rd).count { it.source == "component" } * 2.0
+
+        return minLength +
+            averageLength * 0.1 +
+            componentBonus -
+            quadPenalty * 50.0 -
+            edgeSkewPenalty * 120.0 -
+            aspectPenalty * 80.0
+    }
+
+    private fun edgeSkewPenalty(
+        lu: MiniProgramPoint,
+        ld: MiniProgramPoint,
+        ru: MiniProgramPoint,
+        rd: MiniProgramPoint,
+    ): Double {
+        val width = average(
+            (ru.column - lu.column).toDouble(),
+            (rd.column - ld.column).toDouble(),
+        ).coerceAtLeast(1.0)
+        val height = average(
+            (ld.row - lu.row).toDouble(),
+            (rd.row - ru.row).toDouble(),
+        ).coerceAtLeast(1.0)
+        return abs(lu.row - ru.row) / height +
+            abs(ld.row - rd.row) / height +
+            abs(lu.column - ld.column) / width +
+            abs(ru.column - rd.column) / width
+    }
+
+    private fun aspectRatio(
+        lu: MiniProgramPoint,
+        ld: MiniProgramPoint,
+        ru: MiniProgramPoint,
+        rd: MiniProgramPoint,
+    ): Double {
+        val width = average(
+            (ru.column - lu.column).toDouble(),
+            (rd.column - ld.column).toDouble(),
+        )
+        val height = average(
+            (ld.row - lu.row).toDouble(),
+            (rd.row - ru.row).toDouble(),
+        )
+        return width / height.coerceAtLeast(1.0)
+    }
+
+    private fun relativeDeviation(a: Double, b: Double): Double {
+        val average = average(a, b)
+        return if (average == 0.0) Double.POSITIVE_INFINITY else abs(a - b) / average
+    }
+
+    private fun average(a: Double, b: Double): Double = (a + b) / 2.0
 
     private data class CandidateSearchResult(
         val kind: MiniProgramCornerKind,

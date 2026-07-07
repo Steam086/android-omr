@@ -237,6 +237,28 @@ class AndroidOmrImageScanTest {
     }
 
     @Test
+    fun scanWechatPhotoRecognizesAnchorsAnswersAdmissionAndScore() {
+        val file = findWechatPhoto()
+        assertTrue("wechat photo should exist for real-image regression", file.isFile)
+        val template = templateForImageScan()
+
+        val result = AndroidOmrEngine.scan(
+            frame = AndroidOmrRenderedImageFactory.loadPngAsFrame(file),
+            template = template,
+        )
+
+        assertTrue(result.failureReason ?: result.debugInfo.joinToString(), result.success)
+        assertNotNull(result.anchors)
+        assertEquals("1234", result.admissionNumber?.digits)
+        assertEquals(listOf("A"), result.answerArea?.questions?.single { it.questionIndex == 0 }?.selectedLabels)
+        assertEquals(listOf("B"), result.answerArea?.questions?.single { it.questionIndex == 1 }?.selectedLabels)
+        assertEquals(listOf("C"), result.answerArea?.questions?.single { it.questionIndex == 5 }?.selectedLabels)
+        assertEquals(listOf("D"), result.answerArea?.questions?.single { it.questionIndex == 10 }?.selectedLabels)
+        assertEquals(listOf("A"), result.answerArea?.questions?.single { it.questionIndex == 15 }?.selectedLabels)
+        assertEquals(10.0, result.score?.totalScore ?: -1.0, 0.0)
+    }
+
+    @Test
     fun cornerMatcherTimingDiagnosticsForLargeFrames() {
         val white1280 = whiteFrame(width = 1280, height = 960)
         val noise1280 = noisyFrame(width = 1280, height = 960)
@@ -498,6 +520,17 @@ class AndroidOmrImageScanTest {
             directory = directory.parentFile
         }
         return File("desktop-reference-card.png")
+    }
+
+    private fun findWechatPhoto(): File {
+        val fileName = "微信图片_20260707164730_464_10.png"
+        var directory: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
+        while (directory != null) {
+            val candidate = File(directory, fileName)
+            if (candidate.isFile) return candidate
+            directory = directory.parentFile
+        }
+        return File(fileName)
     }
 
 }

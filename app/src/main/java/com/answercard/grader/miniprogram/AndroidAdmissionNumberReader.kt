@@ -35,6 +35,7 @@ object AndroidAdmissionNumberReader {
         frame: MiniProgramFrame,
         layout: AndroidPaperTemplateLayout,
         projectedCells: AndroidPaperProjectedCells,
+        solidMarks: AndroidSolidMarkOverlay? = null,
     ): AndroidAdmissionNumberReadResult {
         return read(
             frame = frame,
@@ -56,6 +57,10 @@ object AndroidAdmissionNumberReader {
                 }
             },
             debugSource = "cellSource=templateGeometry",
+            solidMarkResolver = solidMarks
+                ?.takeIf { it.hasAdmissionNumberMarks }
+                ?.let { marks -> { mapping -> marks.isAdmissionNumberMarked(mapping) } },
+            solidMarkDebugInfo = solidMarks?.debugInfo.orEmpty(),
         )
     }
 
@@ -64,12 +69,15 @@ object AndroidAdmissionNumberReader {
         layout: AndroidPaperTemplateLayout,
         cellResolver: (AndroidPaperAdmissionNumberMapping) -> CellResolveResult,
         debugSource: String,
+        solidMarkResolver: (((AndroidPaperAdmissionNumberMapping) -> Boolean))? = null,
+        solidMarkDebugInfo: List<String> = emptyList(),
     ): AndroidAdmissionNumberReadResult {
         val debugInfo = mutableListOf<String>()
         debugInfo += "templateType=${layout.templateType}"
         debugInfo += "admissionNumberMappings=${layout.admissionNumberMappings.size}"
         debugInfo += "edgeCleanDirections=none"
         debugInfo += debugSource
+        debugInfo += solidMarkDebugInfo
 
         val candidates = mutableListOf<AndroidAdmissionNumberCandidate>()
         layout.admissionNumberMappings.forEach { mapping ->
@@ -84,12 +92,16 @@ object AndroidAdmissionNumberReader {
                 )
             }
 
+            val effectiveReadResult = solidMarkResolver?.let { resolver ->
+                readResult.copy(isMarked = resolver(mapping))
+            } ?: readResult
+
             candidates += AndroidAdmissionNumberCandidate(
                 digitIndex = mapping.digitIndex,
                 numberValue = mapping.numberValue,
                 row = mapping.row,
                 column = mapping.column,
-                readResult = readResult,
+                readResult = effectiveReadResult,
             )
         }
 
