@@ -13,6 +13,18 @@ data class CornerAnchorReference(
     val rd: TemplatePoint,
 )
 
+enum class CornerMarkerStyle {
+    SOLID_SQUARE,
+    L_BRACKET,
+}
+
+data class CornerMarkerRects(
+    val lu: Rect,
+    val ru: Rect,
+    val ld: Rect,
+    val rd: Rect,
+)
+
 data class OptionBox(val question: Int, val option: String, val rect: Rect)
 
 data class QuestionGuide(val question: Int, val numberRect: Rect)
@@ -33,6 +45,7 @@ object TemplateGeometry {
     const val CORNER_BRACKET_MARGIN = 24f
     const val CORNER_BRACKET_SIZE = 34f
     const val CORNER_BRACKET_THICKNESS = 8f
+    const val CORNER_MARKER_SIZE = 26f
     const val CARD_WIDTH = 540f
     const val HEADER_HEIGHT = 96f
     const val HEADER_DIVIDER_GAP = 8f
@@ -156,6 +169,31 @@ object TemplateGeometry {
             rd = TemplatePoint(right, bottom - CORNER_BRACKET_THICKNESS),
         )
     }
+
+    fun cornerMarkerRects(layout: CardLayout): CornerMarkerRects {
+        val margin = CORNER_BRACKET_MARGIN
+        val size = CORNER_MARKER_SIZE
+        val right = renderedWidth(layout) - margin - size
+        val bottom = renderedHeight(layout) - margin - size
+        return CornerMarkerRects(
+            lu = Rect(margin, margin, size, size),
+            ru = Rect(right, margin, size, size),
+            ld = Rect(margin, bottom, size, size),
+            rd = Rect(right, bottom, size, size),
+        )
+    }
+
+    fun cornerMarkerCenters(layout: CardLayout): CornerAnchorReference {
+        val rects = cornerMarkerRects(layout)
+        return CornerAnchorReference(
+            lu = rects.lu.center(),
+            ld = rects.ld.center(),
+            ru = rects.ru.center(),
+            rd = rects.rd.center(),
+        )
+    }
+
+    private fun Rect.center(): TemplatePoint = TemplatePoint(x + w / 2f, y + h / 2f)
 
     private data class LayoutQuestion(
         val number: Int,
