@@ -16,6 +16,7 @@ class AndroidOmrImageAnalyzer(
     private val processor: AndroidOmrFrameProcessor = AndroidOmrFrameProcessor(),
     private val options: AndroidOmrAnalyzerOptions = AndroidOmrAnalyzerOptions(),
     private val frameAdapter: ((ImageProxy) -> MiniProgramFrame)? = null,
+    private val stabilityGate: (() -> Boolean)? = null,
     private val nowMsProvider: () -> Long = System::currentTimeMillis,
 ) : ImageAnalysis.Analyzer {
     private val busy = AtomicBoolean(false)
@@ -25,11 +26,19 @@ class AndroidOmrImageAnalyzer(
     private val droppedFrameCount = AtomicLong(0L)
     private val throttledFrameCount = AtomicLong(0L)
     private val busyFrameCount = AtomicLong(0L)
+    private val unstableFrameCount = AtomicLong(0L)
     private val lastDroppedReason = AtomicReference("none")
 
     override fun analyze(image: ImageProxy) {
         val currentFrameIndex = frameIndex.incrementAndGet()
         val processedAtMs = nowMsProvider()
+        if (stabilityGate?.invoke() == false) {
+            droppedFrameCount.incrementAndGet()
+            unstableFrameCount.incrementAndGet()
+            lastDroppedReason.set("unstable")
+            image.close()
+            return
+        }
         when (val gateDecision = tryEnterAnalysis(processedAtMs)) {
             FrameGateDecision.Process -> Unit
             FrameGateDecision.Busy -> {
@@ -101,6 +110,7 @@ class AndroidOmrImageAnalyzer(
             "droppedFrameCount=${droppedFrameCount.get()}",
             "throttledFrameCount=${throttledFrameCount.get()}",
             "busyFrameCount=${busyFrameCount.get()}",
+            "unstableFrameCount=${unstableFrameCount.get()}",
             "analyzerBusy=${busy.get()}",
             "lastDroppedReason=${lastDroppedReason.get()}",
             "ImageProxy=${width}x${height}",

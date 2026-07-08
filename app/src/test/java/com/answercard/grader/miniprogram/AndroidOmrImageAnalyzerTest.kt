@@ -313,6 +313,47 @@ class AndroidOmrImageAnalyzerTest {
         assertTrue(nestedImage.closed)
     }
 
+    @Test
+    fun analyzeDropsFramesWhenStabilityGateReportsUnstable() {
+        var resultCount = 0
+        var processCount = 0
+        val analyzer = AndroidOmrImageAnalyzer(
+            templateProvider = { TemplateState.default() },
+            onResult = { resultCount++ },
+            frameAdapter = { MiniProgramFrame(width = 1, height = 1, pixels = intArrayOf(255)) },
+            processor = AndroidOmrFrameProcessor { _, _ ->
+                processCount++
+                result(success = true)
+            },
+            stabilityGate = { false },
+        )
+        val image = FakeImageProxy()
+
+        analyzer.analyze(image)
+
+        assertEquals(0, processCount)
+        assertEquals(0, resultCount)
+        assertTrue(image.closed)
+    }
+
+    @Test
+    fun analyzeProcessesFramesWhenStabilityGateReportsStable() {
+        var resultCount = 0
+        val analyzer = AndroidOmrImageAnalyzer(
+            templateProvider = { TemplateState.default() },
+            onResult = { resultCount++ },
+            frameAdapter = { MiniProgramFrame(width = 1, height = 1, pixels = intArrayOf(255)) },
+            processor = AndroidOmrFrameProcessor { _, _ -> result(success = true) },
+            stabilityGate = { true },
+        )
+        val image = FakeImageProxy()
+
+        analyzer.analyze(image)
+
+        assertEquals(1, resultCount)
+        assertTrue(image.closed)
+    }
+
     private fun result(success: Boolean): AndroidOmrResult =
         AndroidOmrResult(
             success = success,
