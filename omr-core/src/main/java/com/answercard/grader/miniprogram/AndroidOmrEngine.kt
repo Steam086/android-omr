@@ -25,12 +25,21 @@ object AndroidOmrEngine {
         val debugInfo = mutableListOf<String>()
         debugInfo += layoutResult.debugInfo
 
-        val cornerMatch = CornerAnchorMatcher.findAnchorsWithDiagnostics(
+        val solidAnchors = SolidCornerMarkerDetector.findAnchors(
             frame = frame,
             expectedAspectRatio = expectedRenderedAspectRatio(template),
         )
-        val cornerDebugInfo = cornerMatch.diagnostics.debugInfo()
-        val anchors = cornerMatch.anchors
+        val cornerMatch = if (solidAnchors == null) {
+            CornerAnchorMatcher.findAnchorsWithDiagnostics(
+                frame = frame,
+                expectedAspectRatio = expectedRenderedAspectRatio(template),
+            )
+        } else {
+            null
+        }
+        val anchorPath = if (solidAnchors != null) "anchorPath=solid-marker" else "anchorPath=l-bracket"
+        val cornerDebugInfo = cornerMatch?.diagnostics?.debugInfo().orEmpty() + anchorPath
+        val anchors = solidAnchors ?: cornerMatch?.anchors
             ?: return AndroidOmrResult(
                 success = false,
                 failureReason = "corner anchors not found",

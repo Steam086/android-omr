@@ -73,11 +73,17 @@ private class AndroidPaperCoordinateProjector(
     cardLayout: CardLayout,
     anchors: MiniProgramAnchors,
 ) {
-    private val source = TemplateGeometry.cornerAnchorReference(cardLayout)
+    private val source = AnchorReferenceResolver.projectionReference(cardLayout, anchors)
     private val targetLu = anchors.lu.point.toGridPoint()
     private val targetLd = anchors.ld.point.toGridPoint()
     private val targetRu = anchors.ru.point.toGridPoint()
     private val targetRd = anchors.rd.point.toGridPoint()
+    private val mapping: PerspectiveMapping? = PerspectiveMapping.fromCorrespondences(
+        source = listOf(source.lu, source.ru, source.rd, source.ld)
+            .map { PerspectivePoint(it.x.toDouble(), it.y.toDouble()) },
+        target = listOf(targetLu, targetRu, targetRd, targetLd)
+            .map { PerspectivePoint(it.column, it.row) },
+    )
 
     fun cell(row: Int, column: Int, rect: Rect): MiniProgramCell =
         MiniProgramCell(
@@ -90,6 +96,9 @@ private class AndroidPaperCoordinateProjector(
         )
 
     private fun project(point: TemplatePoint): MiniProgramGridPoint {
+        val mapped = mapping?.map(PerspectivePoint(point.x.toDouble(), point.y.toDouble()))
+        if (mapped != null) return MiniProgramGridPoint(row = mapped.y, column = mapped.x)
+        // Degenerate anchors: fall back to bilinear interpolation.
         val rowRatio = ((point.y - source.lu.y) / (source.ld.y - source.lu.y)).toDouble()
         val columnRatio = ((point.x - source.lu.x) / (source.ru.x - source.lu.x)).toDouble()
         return MiniProgramGridBuilder.interpolate(

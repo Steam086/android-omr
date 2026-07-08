@@ -95,12 +95,22 @@ object AndroidSolidMarkDetector {
         val admissionNumberCells = mutableSetOf<AndroidPaperAdmissionNumberCellKey>()
         var matchedComponents = 0
         var totalCenterDistance = 0.0
+        val mapping = PerspectiveMapping.fromCorrespondences(
+            source = listOf(source.lu, source.ru, source.rd, source.ld)
+                .map { PerspectivePoint(it.x.toDouble(), it.y.toDouble()) },
+            target = listOf(anchors.lu, anchors.ru, anchors.rd, anchors.ld)
+                .map { PerspectivePoint(it.point.column.toDouble(), it.point.row.toDouble()) },
+        )
         components.forEach { component ->
-            val sourcePoint = invert(
-                target = MiniProgramGridPoint(row = component.centerRow, column = component.centerColumn),
-                anchors = anchors,
-                source = source,
-            ) ?: return@forEach
+            val sourcePoint = mapping
+                ?.invert(PerspectivePoint(component.centerColumn, component.centerRow))
+                ?.let { TemplatePoint(it.x.toFloat(), it.y.toFloat()) }
+                ?: invert(
+                    target = MiniProgramGridPoint(row = component.centerRow, column = component.centerColumn),
+                    anchors = anchors,
+                    source = source,
+                )
+                ?: return@forEach
             val question = matchQuestionCell(cardLayout, questionIndexByNumber, sourcePoint)
             val admission = matchAdmissionNumberCell(cardLayout, admissionNumberDigits, sourcePoint)
             question?.let { match ->
@@ -202,6 +212,17 @@ object AndroidSolidMarkDetector {
         cardLayout: CardLayout,
         anchors: MiniProgramAnchors,
     ): List<Pair<String, CornerAnchorReferencePoints>> {
+        if (AnchorReferenceResolver.isSolidMarker(anchors)) {
+            val centers = TemplateGeometry.cornerMarkerCenters(cardLayout)
+            return listOf(
+                "markerCenters" to CornerAnchorReferencePoints(
+                    lu = centers.lu,
+                    ld = centers.ld,
+                    ru = centers.ru,
+                    rd = centers.rd,
+                ),
+            )
+        }
         val reference = TemplateGeometry.cornerAnchorReference(cardLayout)
         val outer = CornerAnchorReferencePoints(
             lu = reference.lu,
