@@ -26,7 +26,10 @@ object AndroidSolidMarkDetector {
     private const val MIN_COMPONENT_AREA_RATIO = 0.0001
     private const val MIN_COMPONENT_FILL_RATIO = 0.82f
     private const val MIN_COMPONENT_SIZE_RATIO = 0.008
-    private const val RECT_TOLERANCE = 4f
+    private val OPTION_TOLERANCE_X = (TemplateGeometry.OPTION_STEP_X - TemplateGeometry.OPTION_BOX_W) / 2f
+    private val OPTION_TOLERANCE_Y = (TemplateGeometry.QUESTION_ROW_STEP_Y - TemplateGeometry.OPTION_BOX_H) / 2f
+    private val DIGIT_TOLERANCE_X = (TemplateGeometry.EXAM_DIGIT_STEP_X - TemplateGeometry.EXAM_DIGIT_BOX_W) / 2f
+    private val DIGIT_TOLERANCE_Y = (TemplateGeometry.EXAM_ROW_STEP_Y - TemplateGeometry.EXAM_DIGIT_BOX_H) / 2f
 
     fun detect(
         frame: MiniProgramFrame,
@@ -132,7 +135,7 @@ object AndroidSolidMarkDetector {
         )
     }
 
-    private data class CellMatch<T>(
+    internal data class CellMatch<T>(
         val key: T,
         val centerDistance: Double,
     )
@@ -151,14 +154,18 @@ object AndroidSolidMarkDetector {
             }
     }
 
-    private fun matchQuestionCell(
+    internal fun matchQuestionCell(
         cardLayout: CardLayout,
         questionIndexByNumber: Map<Int, Int>,
         sourcePoint: TemplatePoint,
     ): CellMatch<AndroidPaperQuestionCellKey>? {
-        val option = cardLayout.options.firstOrNull { option ->
-            TemplateGeometry.renderedRect(option.rect).contains(sourcePoint)
-        } ?: return null
+        val option = cardLayout.options
+            .filter { candidate ->
+                TemplateGeometry.renderedRect(candidate.rect)
+                    .containsWithTolerance(sourcePoint, OPTION_TOLERANCE_X, OPTION_TOLERANCE_Y)
+            }
+            .minByOrNull { candidate -> TemplateGeometry.renderedRect(candidate.rect).centerDistance(sourcePoint) }
+            ?: return null
         val questionIndex = questionIndexByNumber[option.question] ?: return null
         val optionIndex = cardLayout.options
             .filter { it.question == option.question }
@@ -170,12 +177,13 @@ object AndroidSolidMarkDetector {
         )
     }
 
-    private fun matchAdmissionNumberCell(
+    internal fun matchAdmissionNumberCell(
         cardLayout: CardLayout,
         admissionNumberDigits: Int,
         sourcePoint: TemplatePoint,
     ): CellMatch<AndroidPaperAdmissionNumberCellKey>? {
         if (cardLayout.examIdRows.isEmpty()) return null
+        var best: CellMatch<AndroidPaperAdmissionNumberCellKey>? = null
         for (digitIndex in 0 until admissionNumberDigits) {
             for (numberValue in 0..9) {
                 val rect = TemplateGeometry.renderedRect(
@@ -185,22 +193,24 @@ object AndroidSolidMarkDetector {
                         digit = numberValue,
                     ),
                 )
-                if (rect.contains(sourcePoint)) {
-                    return CellMatch(
+                if (!rect.containsWithTolerance(sourcePoint, DIGIT_TOLERANCE_X, DIGIT_TOLERANCE_Y)) continue
+                val distance = rect.centerDistance(sourcePoint)
+                if (best == null || distance < best.centerDistance) {
+                    best = CellMatch(
                         key = AndroidPaperAdmissionNumberCellKey(digitIndex, numberValue),
-                        centerDistance = rect.centerDistance(sourcePoint),
+                        centerDistance = distance,
                     )
                 }
             }
         }
-        return null
+        return best
     }
 
-    private fun Rect.contains(point: TemplatePoint): Boolean =
-        point.x >= x - RECT_TOLERANCE &&
-            point.x <= x + w + RECT_TOLERANCE &&
-            point.y >= y - RECT_TOLERANCE &&
-            point.y <= y + h + RECT_TOLERANCE
+    private fun Rect.containsWithTolerance(point: TemplatePoint, toleranceX: Float, toleranceY: Float): Boolean =
+        point.x >= x - toleranceX &&
+            point.x <= x + w + toleranceX &&
+            point.y >= y - toleranceY &&
+            point.y <= y + h + toleranceY
 
     private fun Rect.centerDistance(point: TemplatePoint): Double {
         val dx = (point.x - (x + w / 2f)).toDouble()

@@ -52,12 +52,6 @@ class DesktopTemplateCardRenderer(
         fillMark(TemplateGeometry.renderedRect(rect))
     }
 
-    fun markAnswerShifted(questionNumber: Int, optionLabel: String, dxUnits: Float) {
-        val rect = layout.options.single { it.question == questionNumber && it.option == optionLabel }.rect
-        val shifted = Rect(rect.x + dxUnits, rect.y, rect.w, rect.h)
-        fillMark(TemplateGeometry.renderedRect(shifted))
-    }
-
     fun markAdmissionNumber(digits: String) {
         digits.forEachIndexed { digitIndex, char ->
             if (char.isDigit()) {
