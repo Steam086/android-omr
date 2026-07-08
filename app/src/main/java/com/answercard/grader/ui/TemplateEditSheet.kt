@@ -21,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -74,15 +75,36 @@ fun TemplateEditSheet(
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.clickable(enabled = selectedCount > 0) { batchDialogOpen = true },
                 )
-                Row {
-                    Text("准考证号：${template.examIdDigits}位", fontSize = 15.sp, color = UiTokens.TextPrimary)
-                    Spacer(Modifier.width(16.dp))
+                if (template.showHeader) {
+                    Row {
+                        Text("准考证号：${template.examIdDigits}位", fontSize = 15.sp, color = UiTokens.TextPrimary)
+                        Spacer(Modifier.width(16.dp))
+                        Text(
+                            "修改",
+                            color = UiTokens.Red,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.clickable { examDialogOpen = true },
+                        )
+                    }
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("姓名/学号区", fontSize = 15.sp, color = UiTokens.TextPrimary)
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "修改",
-                        color = UiTokens.Red,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.clickable { examDialogOpen = true },
+                        if (template.showHeader) "保留" else "不保留·紧凑",
+                        fontSize = 13.sp,
+                        color = UiTokens.TextSecondary,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Switch(
+                        checked = template.showHeader,
+                        onCheckedChange = { onTemplateChange(template.withShowHeader(it)) },
                     )
                 }
             }

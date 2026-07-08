@@ -52,7 +52,7 @@ fun ShareTemplateScreen(template: TemplateState, onBack: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(template.name, fontSize = 17.sp, fontWeight = FontWeight.Medium)
                 Badge("${template.questions.size}题")
-                Badge("${template.examIdDigits}位考号")
+                Badge(if (template.showHeader) "${template.examIdDigits}位考号" else "无考号")
             }
             Image(
                 bitmap = preview,

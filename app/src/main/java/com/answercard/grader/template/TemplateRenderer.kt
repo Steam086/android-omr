@@ -46,9 +46,11 @@ object TemplateRenderer {
         drawCornerBrackets(canvas, layout, fill)
         canvas.save()
         canvas.translate(TemplateGeometry.PAGE_MARGIN, TemplateGeometry.PAGE_MARGIN)
-        drawHeaderDivider(canvas, layout)
-        drawInfoPanel(canvas)
-        drawExamId(canvas, layout)
+        if (layout.showHeader) {
+            drawHeaderDivider(canvas, layout)
+            drawInfoPanel(canvas)
+            drawExamId(canvas, layout)
+        }
         drawQuestions(canvas, layout, optionText, stroke)
         canvas.restore()
 

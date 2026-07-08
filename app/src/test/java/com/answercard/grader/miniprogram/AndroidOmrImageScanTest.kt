@@ -212,6 +212,31 @@ class AndroidOmrImageScanTest {
     }
 
     @Test
+    fun formalScanReadsRenderedHeaderlessTemplateAnswersAndScore() {
+        val template = templateForImageScan().withShowHeader(false)
+        val bitmap = TemplateRenderer.render(template, scale = 3f)
+        markProductionAnswer(bitmap, template, questionNumber = 1, optionLabel = "A", scale = 3f)
+        markProductionAnswer(bitmap, template, questionNumber = 2, optionLabel = "B", scale = 3f)
+        markProductionAnswer(bitmap, template, questionNumber = 6, optionLabel = "C", scale = 3f)
+        markProductionAnswer(bitmap, template, questionNumber = 11, optionLabel = "D", scale = 3f)
+        markProductionAnswer(bitmap, template, questionNumber = 16, optionLabel = "A", scale = 3f)
+        writeDebugPng(bitmap, "production-template-headerless-filled.png")
+
+        val result = AndroidOmrEngine.scan(bitmap.toMiniProgramFrame(), template)
+
+        assertTrue(result.failureReason ?: result.debugInfo.joinToString(), result.success)
+        assertNotNull(result.anchors)
+        assertEquals("", result.admissionNumber?.digits)
+        assertEquals(true, result.admissionNumber?.success)
+        assertEquals(listOf("A"), result.answerArea?.questions?.single { it.questionIndex == 0 }?.selectedLabels)
+        assertEquals(listOf("B"), result.answerArea?.questions?.single { it.questionIndex == 1 }?.selectedLabels)
+        assertEquals(listOf("C"), result.answerArea?.questions?.single { it.questionIndex == 5 }?.selectedLabels)
+        assertEquals(listOf("D"), result.answerArea?.questions?.single { it.questionIndex == 10 }?.selectedLabels)
+        assertEquals(listOf("A"), result.answerArea?.questions?.single { it.questionIndex == 15 }?.selectedLabels)
+        assertEquals(10.0, result.score?.totalScore ?: -1.0, 0.0)
+    }
+
+    @Test
     fun desktopReferenceOldTemplateSmokeReportsScanStage() {
         val file = findDesktopReferenceCard()
         assertTrue("desktop-reference-card.png should exist for smoke diagnostics", file.isFile)

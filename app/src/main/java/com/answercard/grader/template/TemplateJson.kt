@@ -22,6 +22,7 @@ object TemplateJson {
         return JSONObject()
             .put("name", template.name)
             .put("examIdDigits", template.examIdDigits)
+            .put("showHeader", template.showHeader)
             .put("questions", questions)
             .toString()
     }
@@ -32,6 +33,7 @@ object TemplateJson {
             val root = JSONObject(json)
             val name = root.optString("name", "默认试卷").ifBlank { "默认试卷" }
             val examIdDigits = root.optInt("examIdDigits", 4).coerceIn(1, 12)
+            val showHeader = root.optBoolean("showHeader", true)
             val rawQuestions = root.getJSONArray("questions")
             val questions = (0 until rawQuestions.length()).map { index ->
                 val item = rawQuestions.getJSONObject(index)
@@ -58,7 +60,7 @@ object TemplateJson {
             }.filter { it.number in 1..60 }
                 .sortedBy { it.number }
 
-            if (questions.isEmpty()) TemplateState.default() else TemplateState(name, questions, examIdDigits)
+            if (questions.isEmpty()) TemplateState.default() else TemplateState(name, questions, examIdDigits, showHeader)
         }.getOrDefault(TemplateState.default())
     }
 }

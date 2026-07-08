@@ -7,7 +7,7 @@ class AndroidOmrSyntheticFrameFactory(
 ) {
     val layout: AndroidPaperTemplateLayout = AndroidPaperTemplateBuilder.build(
         questionOptionCounts = template.questions.map { it.optionCount },
-        admissionNumberDigits = template.examIdDigits,
+        admissionNumberDigits = if (template.showHeader) template.examIdDigits else 0,
     )
     val frameWidth: Int = layout.gridColumns * CELL_SIZE
     val frameHeight: Int = layout.gridRows * CELL_SIZE

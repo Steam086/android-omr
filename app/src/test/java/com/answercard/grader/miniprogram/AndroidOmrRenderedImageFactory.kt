@@ -12,7 +12,7 @@ class AndroidOmrRenderedImageFactory(
 ) {
     val layout: AndroidPaperTemplateLayout = AndroidPaperTemplateBuilder.build(
         questionOptionCounts = template.questions.map { it.optionCount },
-        admissionNumberDigits = template.examIdDigits,
+        admissionNumberDigits = if (template.showHeader) template.examIdDigits else 0,
     )
     val frameWidth: Int = margin * 2 + layout.gridColumns * cellSize + 1
     val frameHeight: Int = margin * 2 + layout.gridRows * cellSize + 1

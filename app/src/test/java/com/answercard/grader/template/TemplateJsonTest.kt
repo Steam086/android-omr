@@ -31,4 +31,24 @@ class TemplateJsonTest {
 
         assertEquals(false, restored.questions.single { it.number == 2 }.selected)
     }
+
+    @Test
+    fun roundTripPreservesShowHeader() {
+        val template = TemplateState.default().withShowHeader(false)
+
+        val restored = TemplateJson.fromJson(TemplateJson.toJson(template))
+
+        assertEquals(template, restored)
+        assertEquals(false, restored.showHeader)
+    }
+
+    @Test
+    fun legacyJsonWithoutShowHeaderDefaultsToHeaderShown() {
+        val legacyRoot = org.json.JSONObject(TemplateJson.toJson(TemplateState.default()))
+        legacyRoot.remove("showHeader")
+
+        val restored = TemplateJson.fromJson(legacyRoot.toString())
+
+        assertEquals(true, restored.showHeader)
+    }
 }

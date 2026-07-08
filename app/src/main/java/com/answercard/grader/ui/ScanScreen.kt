@@ -95,8 +95,9 @@ fun ScanScreen(
                     displayResult = ScanDisplayResult.fromAndroidOmrResult(result)
                     status = if (result.success) "Recognized" else "Not recognized"
                     val score = result.score
-                    val examId = result.admissionNumber?.digits
-                    if (result.success && score != null && !examId.isNullOrBlank()) {
+                    val examId = result.admissionNumber?.digits.orEmpty()
+                    val examIdReady = examId.isNotBlank() || !template.showHeader
+                    if (result.success && score != null && examIdReady) {
                         val handledKey = "$examId:${score.totalScore}/${score.maxScore}"
                         if (handledKey != lastHandledKey) {
                             lastHandledKey = handledKey

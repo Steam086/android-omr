@@ -38,4 +38,13 @@ class TemplateRendererTest {
 
         assertArrayEquals(expected, actual)
     }
+
+    @Test
+    fun headerlessTemplateRendersCompactCard() {
+        val header = TemplateRenderer.render(TemplateState.default(), scale = 3f)
+        val headerless = TemplateRenderer.render(TemplateState.default().withShowHeader(false), scale = 3f)
+
+        assertEquals(header.width, headerless.width)
+        assertEquals(576, headerless.height)
+    }
 }
