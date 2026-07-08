@@ -75,7 +75,7 @@ private fun buildTemplate(options: CliOptions): TemplateState {
         }
         QuestionSetting(number = number, answer = answer, score = score)
     }
-    return TemplateState(name = "desktop-cli", questions = questions)
+    return TemplateState(name = "desktop-cli", questions = questions, showHeader = !options.noHeader)
 }
 
 private data class CliOptions(
@@ -83,6 +83,7 @@ private data class CliOptions(
     val questionCount: Int,
     val answers: Map<Int, String>,
     val score: Int,
+    val noHeader: Boolean,
     val debug: Boolean,
     val help: Boolean,
 ) {
@@ -92,6 +93,7 @@ private data class CliOptions(
             var questionCount = DEFAULT_QUESTION_COUNT
             var answers = emptyMap<Int, String>()
             var score = DEFAULT_SCORE
+            var noHeader = false
             var debug = false
             var help = false
 
@@ -101,6 +103,7 @@ private data class CliOptions(
                 when {
                     arg == "--help" || arg == "-h" -> help = true
                     arg == "--debug" -> debug = true
+                    arg == "--no-header" -> noHeader = true
                     arg == "--questions" -> {
                         questionCount = args.valueAfter(index, arg).toIntStrict(arg)
                         index += 1
@@ -141,6 +144,7 @@ private data class CliOptions(
                 questionCount = questionCount,
                 answers = answers,
                 score = score,
+                noHeader = noHeader,
                 debug = debug,
                 help = help,
             )
@@ -197,7 +201,7 @@ private fun printUsage() {
     println(
         """
         Usage:
-          gradlew :omr-cli:run --args="<image> [--questions N] [--answers 1:A,2:B] [--score N] [--debug]"
+          gradlew :omr-cli:run --args="<image> [--questions N] [--answers 1:A,2:B] [--score N] [--no-header] [--debug]"
 
         Defaults:
           --questions $DEFAULT_QUESTION_COUNT
