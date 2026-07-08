@@ -1,6 +1,7 @@
 package com.answercard.grader.miniprogram
 
 import com.answercard.grader.template.CardLayout
+import com.answercard.grader.template.CornerMarkerStyle
 import com.answercard.grader.template.Rect
 import com.answercard.grader.template.TemplateGeometry
 import com.answercard.grader.template.TemplateState
@@ -20,6 +21,7 @@ import kotlin.math.roundToInt
 class DesktopTemplateCardRenderer(
     template: TemplateState,
     private val scale: Float = 3f,
+    private val markerStyle: CornerMarkerStyle = CornerMarkerStyle.L_BRACKET,
 ) {
     private val layout: CardLayout = TemplateGeometry.buildLayout(template)
     private val image: BufferedImage = BufferedImage(
@@ -33,7 +35,10 @@ class DesktopTemplateCardRenderer(
             graphics.color = Color.WHITE
             graphics.fill(Rectangle2D.Float(0f, 0f, TemplateGeometry.renderedWidth(layout), TemplateGeometry.renderedHeight(layout)))
             graphics.color = Color.BLACK
-            drawCornerBrackets(graphics)
+            when (markerStyle) {
+                CornerMarkerStyle.SOLID_SQUARE -> drawCornerMarkers(graphics)
+                CornerMarkerStyle.L_BRACKET -> drawCornerBrackets(graphics)
+            }
             graphics.translate(TemplateGeometry.PAGE_MARGIN.toDouble(), TemplateGeometry.PAGE_MARGIN.toDouble())
             if (layout.showHeader) {
                 drawHeader(graphics)
@@ -45,6 +50,12 @@ class DesktopTemplateCardRenderer(
     fun markAnswer(questionNumber: Int, optionLabel: String) {
         val rect = layout.options.single { it.question == questionNumber && it.option == optionLabel }.rect
         fillMark(TemplateGeometry.renderedRect(rect))
+    }
+
+    fun markAnswerShifted(questionNumber: Int, optionLabel: String, dxUnits: Float) {
+        val rect = layout.options.single { it.question == questionNumber && it.option == optionLabel }.rect
+        val shifted = Rect(rect.x + dxUnits, rect.y, rect.w, rect.h)
+        fillMark(TemplateGeometry.renderedRect(shifted))
     }
 
     fun markAdmissionNumber(digits: String) {
@@ -119,6 +130,13 @@ class DesktopTemplateCardRenderer(
             Rect(right - thick, bottom - size, thick, size),
         )
         pieces.forEach { graphics.fill(Rectangle2D.Float(it.x, it.y, it.w, it.h)) }
+    }
+
+    private fun drawCornerMarkers(graphics: Graphics2D) {
+        val rects = TemplateGeometry.cornerMarkerRects(layout)
+        listOf(rects.lu, rects.ru, rects.ld, rects.rd).forEach { rect ->
+            graphics.fill(Rectangle2D.Float(rect.x, rect.y, rect.w, rect.h))
+        }
     }
 
     private fun drawHeader(graphics: Graphics2D) {
