@@ -90,10 +90,11 @@
 ## 验证结果（实施后）
 
 - L 形微信照片探针（legacy 回退路径 + 透视映射 + 最近中心匹配，`camera-instability-probe.txt`）：
-  ds1280 现为 10.0/10.0，与全分辨率一致（此前为 8/10 且 Q11 D→C 翻转，现已消除）；
+  历史基线数值（ds1280 8/10、cornerShadow35 6/10、blur1+noise3 8/8/6/6/失败）来自在提交 407ad14（修复前代码）上运行同一探针的输出，探针使用固定种子、可确定性复现；
+  现在 ds1280 改为 10.0/10.0，与全分辨率一致（Q11 D→C 翻转已消除）；
   cornerShadow35 由此前 6/10 提升为 10.0/10.0；blur1+noise3 五个种子中 3 个可见失败
-  （`invalid card geometry` / `projected cell too small`，即拒绝而非误判），2 个成功且均为
-  10.0/10.0（此前为 8/8/6/6/失败的部分错分模式），无一例"判成别的选项"的沉默错分。
+  （`projected cell too small`，即拒绝而非误判；其余变体中另见 `invalid card geometry` 类可见拒绝），2 个成功且均为
+  10.0/10.0（此前的部分错分模式已消除），无一例"判成别的选项"的沉默错分。
 - 方块卡稳定性回归（`SolidMarkerCardStabilityTest`）：1280 宽 + blur1 + noise3 × 8 种子,
   成功帧全部 10/10 且学号一致。
 - 已知基线失败（与本次改动无关，改动前后均失败）：`AndroidOmrImageScanTest` 3 例、
