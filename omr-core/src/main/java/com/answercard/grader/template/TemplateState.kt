@@ -35,6 +35,7 @@ data class TemplateState(
     val name: String,
     val questions: List<QuestionSetting>,
     val examIdDigits: Int = 4,
+    val showHeader: Boolean = true,
 ) {
     val totalScore: Int
         get() = questions.sumOf { it.score }
@@ -77,6 +78,9 @@ data class TemplateState(
 
     fun withExamIdDigits(digits: Int): TemplateState =
         copy(examIdDigits = digits.coerceIn(1, 12))
+
+    fun withShowHeader(show: Boolean): TemplateState =
+        copy(showHeader = show)
 
     fun withName(name: String): TemplateState =
         copy(name = name.ifBlank { this.name })

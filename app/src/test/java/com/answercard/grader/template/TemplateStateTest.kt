@@ -38,4 +38,13 @@ class TemplateStateTest {
 
         assertEquals(6, template.examIdDigits)
     }
+
+    @Test
+    fun headerIsShownByDefaultAndCanBeToggled() {
+        val template = TemplateState.default()
+
+        assertEquals(true, template.showHeader)
+        assertEquals(false, template.withShowHeader(false).showHeader)
+        assertEquals(true, template.withShowHeader(false).withShowHeader(true).showHeader)
+    }
 }

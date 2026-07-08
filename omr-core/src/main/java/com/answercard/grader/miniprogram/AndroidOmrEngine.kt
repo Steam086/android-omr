@@ -242,7 +242,7 @@ object AndroidOmrEngine {
             LayoutBuildResult(
                 layout = AndroidPaperTemplateBuilder.build(
                     questionOptionCounts = template.questions.map { it.optionCount },
-                    admissionNumberDigits = template.examIdDigits,
+                    admissionNumberDigits = if (template.showHeader) template.examIdDigits else 0,
                 ),
                 failureReason = null,
                 debugInfo = listOf("layout built"),
@@ -436,13 +436,16 @@ object AndroidOmrEngine {
     private data class ProjectedCellSizeValidation(
         val minAnswer: CellSize,
         val minAdmission: CellSize,
+        val hasAdmissionCells: Boolean,
         val q1A: CellSize,
     ) {
         val isValid: Boolean =
             minAnswer.width >= MIN_PROJECTED_CELL_SIZE &&
                 minAnswer.height >= MIN_PROJECTED_CELL_SIZE &&
-                minAdmission.width >= MIN_PROJECTED_CELL_SIZE &&
-                minAdmission.height >= MIN_PROJECTED_CELL_SIZE
+                (
+                    !hasAdmissionCells ||
+                        (minAdmission.width >= MIN_PROJECTED_CELL_SIZE && minAdmission.height >= MIN_PROJECTED_CELL_SIZE)
+                    )
 
         fun debugInfo(): List<String> =
             listOf(
@@ -458,6 +461,7 @@ object AndroidOmrEngine {
                 return ProjectedCellSizeValidation(
                     minAnswer = minCellSize(answerSizes),
                     minAdmission = minCellSize(admissionSizes),
+                    hasAdmissionCells = admissionSizes.isNotEmpty(),
                     q1A = projectedCells.questionCells[AndroidPaperQuestionCellKey(questionIndex = 0, optionIndex = 0)]
                         ?.let(::cellSize)
                         ?: CellSize(width = 0, height = 0),

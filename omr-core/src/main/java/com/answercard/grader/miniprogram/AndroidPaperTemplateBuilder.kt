@@ -22,16 +22,19 @@ object AndroidPaperTemplateBuilder {
         require(questionOptionCounts.all { it in MIN_OPTION_COUNT..MAX_OPTION_COUNT }) {
             "question option counts must be between 2 and 4"
         }
-        require(admissionNumberDigits == ADMISSION_NUMBER_DIGITS) { "admissionNumberDigits must be 4" }
+        require(admissionNumberDigits == ADMISSION_NUMBER_DIGITS || admissionNumberDigits == 0) {
+            "admissionNumberDigits must be 4, or 0 for headerless cards"
+        }
 
         val questionsPerGroup = TemplateGeometry.QUESTIONS_PER_GROUP
         val groupsPerBand = TemplateGeometry.QUESTION_GROUPS_PER_ROW
         val questionsPerBand = TemplateGeometry.QUESTIONS_PER_BAND
         val bands = ceil(questionOptionCounts.size.toDouble() / questionsPerBand.toDouble()).toInt()
         val answerRows = bands * questionsPerGroup
-        val gridRows = ANSWER_START_ROW + answerRows
+        val answerStartRow = if (admissionNumberDigits == 0) 0 else ANSWER_START_ROW
+        val gridRows = answerStartRow + answerRows
         val gridColumns = groupsPerBand * MAX_OPTION_COUNT
-        val questionMappings = buildQuestionMappings(questionOptionCounts, questionsPerGroup, groupsPerBand)
+        val questionMappings = buildQuestionMappings(questionOptionCounts, questionsPerGroup, groupsPerBand, answerStartRow)
         val admissionNumberMappings = buildAdmissionNumberMappings(admissionNumberDigits)
 
         return AndroidPaperTemplateLayout(
@@ -45,10 +48,10 @@ object AndroidPaperTemplateBuilder {
                 startRow = ADMISSION_START_ROW,
                 endRow = admissionNumberDigits,
                 startColumn = 0,
-                endColumn = DIGIT_VALUES,
+                endColumn = if (admissionNumberDigits == 0) 0 else DIGIT_VALUES,
             ),
             answerArea = AndroidPaperGridArea(
-                startRow = ANSWER_START_ROW,
+                startRow = answerStartRow,
                 endRow = gridRows,
                 startColumn = 0,
                 endColumn = gridColumns,
@@ -63,8 +66,8 @@ object AndroidPaperTemplateBuilder {
                 "groupsPerBand" to groupsPerBand.toString(),
                 "questionsPerBand" to questionsPerBand.toString(),
                 "grid" to "rows=$gridRows,columns=$gridColumns",
-                "answerArea" to "rows=${ANSWER_START_ROW}..$gridRows,columns=0..$gridColumns",
-                "admissionNumberArea" to "rows=0..$admissionNumberDigits,columns=0..$DIGIT_VALUES",
+                "answerArea" to "rows=$answerStartRow..$gridRows,columns=0..$gridColumns",
+                "admissionNumberArea" to "rows=0..$admissionNumberDigits,columns=0..${if (admissionNumberDigits == 0) 0 else DIGIT_VALUES}",
             ),
         )
     }
@@ -73,6 +76,7 @@ object AndroidPaperTemplateBuilder {
         questionOptionCounts: List<Int>,
         questionsPerGroup: Int,
         groupsPerBand: Int,
+        answerStartRow: Int,
     ): List<AndroidPaperQuestionMapping> =
         questionOptionCounts.flatMapIndexed { questionIndex, optionCount ->
             val indexInBand = questionIndex % (questionsPerGroup * groupsPerBand)
@@ -83,7 +87,7 @@ object AndroidPaperTemplateBuilder {
                 AndroidPaperQuestionMapping(
                     questionIndex = questionIndex,
                     optionIndex = optionIndex,
-                    row = ANSWER_START_ROW + band * questionsPerGroup + rowInGroup,
+                    row = answerStartRow + band * questionsPerGroup + rowInGroup,
                     column = group * MAX_OPTION_COUNT + optionIndex,
                 )
             }

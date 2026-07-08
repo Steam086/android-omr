@@ -32,10 +32,10 @@ class AndroidPaperTemplateBuilderTest {
         assertRejects("question option counts must be between 2 and 4") {
             AndroidPaperTemplateBuilder.build(questionOptionCounts = listOf(5))
         }
-        assertRejects("admissionNumberDigits must be 4") {
-            AndroidPaperTemplateBuilder.build(questionOptionCounts = listOf(4), admissionNumberDigits = 0)
+        assertRejects("admissionNumberDigits must be 4, or 0 for headerless cards") {
+            AndroidPaperTemplateBuilder.build(questionOptionCounts = listOf(4), admissionNumberDigits = 3)
         }
-        assertRejects("admissionNumberDigits must be 4") {
+        assertRejects("admissionNumberDigits must be 4, or 0 for headerless cards") {
             AndroidPaperTemplateBuilder.build(questionOptionCounts = listOf(4), admissionNumberDigits = 5)
         }
     }

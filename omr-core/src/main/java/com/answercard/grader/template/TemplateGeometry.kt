@@ -23,6 +23,7 @@ data class CardLayout(
     val options: List<OptionBox>,
     val examIdRows: List<Rect>,
     val questionGuides: List<QuestionGuide>,
+    val showHeader: Boolean = true,
 )
 
 object TemplateGeometry {
@@ -73,13 +74,14 @@ object TemplateGeometry {
         }.map { question ->
             LayoutQuestion(number = question.number, options = question.options.ifEmpty { defaultOptionLabels(question.optionCount) })
         }
-        return buildLayout(questions)
+        return buildLayout(questions, template.showHeader)
     }
 
-    private fun buildLayout(questions: List<LayoutQuestion>): CardLayout {
+    private fun buildLayout(questions: List<LayoutQuestion>, showHeader: Boolean = true): CardLayout {
         val count = questions.size.coerceIn(1, 60)
         val bands = ceil(count / QUESTIONS_PER_BAND.toFloat()).toInt()
-        val height = HEADER_HEIGHT + HEADER_DIVIDER_GAP + bands * QUESTION_BAND_HEIGHT + CARD_MARGIN_BOTTOM
+        val headerOffset = if (showHeader) HEADER_HEIGHT + HEADER_DIVIDER_GAP else 0f
+        val height = headerOffset + bands * QUESTION_BAND_HEIGHT + CARD_MARGIN_BOTTOM
         val questionWidth = CARD_WIDTH - CARD_MARGIN_X * 2f
         val groupWidth = questionWidth / QUESTION_GROUPS_PER_ROW
         val answerTopGap = 20f
@@ -93,7 +95,7 @@ object TemplateGeometry {
             val group = withinBand / QUESTIONS_PER_GROUP
             val row = withinBand % QUESTIONS_PER_GROUP
             val baseX = CARD_MARGIN_X + 6f + group * groupWidth
-            val y = HEADER_HEIGHT + HEADER_DIVIDER_GAP + answerTopGap +
+            val y = headerOffset + answerTopGap +
                 band * QUESTION_BAND_HEIGHT + row * QUESTION_ROW_STEP_Y
 
             guides += QuestionGuide(question.number, Rect(baseX, y - 1f, 18f, OPTION_BOX_H))
@@ -106,8 +108,12 @@ object TemplateGeometry {
             }
         }
 
-        val examRows = (0 until 4).map { row ->
-            Rect(EXAM_X, EXAM_Y_FROM_TOP + row * EXAM_ROW_STEP_Y, EXAM_ROW_W, EXAM_ROW_H)
+        val examRows = if (showHeader) {
+            (0 until 4).map { row ->
+                Rect(EXAM_X, EXAM_Y_FROM_TOP + row * EXAM_ROW_STEP_Y, EXAM_ROW_W, EXAM_ROW_H)
+            }
+        } else {
+            emptyList()
         }
 
         return CardLayout(
@@ -116,6 +122,7 @@ object TemplateGeometry {
             options = options,
             examIdRows = examRows,
             questionGuides = guides,
+            showHeader = showHeader,
         )
     }
 
