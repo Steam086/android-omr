@@ -80,7 +80,7 @@ fun ScanScreen(
     var lastScanAt by remember { mutableLongStateOf(0L) }
     var lastHandledKey by remember { mutableStateOf<String?>(null) }
     var displayResult by remember { mutableStateOf<ScanDisplayResult?>(null) }
-    var lockedScoreText by remember { mutableStateOf<String?>(null) }
+    var lockedScoreText by remember(template) { mutableStateOf<String?>(null) }
     var deviceStable by remember { mutableStateOf(true) }
     var stabilityGateEnabled by rememberSaveable { mutableStateOf(true) }
     val currentStabilityGateEnabled = rememberUpdatedState(stabilityGateEnabled)

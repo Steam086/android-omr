@@ -4,6 +4,7 @@ import com.answercard.grader.template.QuestionSetting
 import com.answercard.grader.template.TemplateState
 import java.io.File
 import javax.imageio.ImageIO
+import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -28,6 +29,22 @@ class DesktopWechatImageScanTest {
         assertEquals(listOf("C"), result.answerArea?.questions?.single { it.questionIndex == 5 }?.selectedLabels)
         assertEquals(listOf("D"), result.answerArea?.questions?.single { it.questionIndex == 10 }?.selectedLabels)
         assertEquals(listOf("A"), result.answerArea?.questions?.single { it.questionIndex == 15 }?.selectedLabels)
+        assertEquals(10.0, result.score?.totalScore ?: -1.0, 0.0)
+    }
+
+    @Test
+    fun scanWechatPhotoAtAnalysisResolution() {
+        val file = findRootFile("微信图片_20260707164730_464_10.png")
+        assertTrue("wechat photo should exist for desktop regression", file.isFile)
+
+        val result = AndroidOmrEngine.scan(
+            frame = downscaleToWidth(loadImageAsFrame(file), 1280),
+            template = sampleTemplate(),
+        )
+
+        assertTrue(result.failureReason ?: result.debugInfo.joinToString(), result.success)
+        assertEquals("1234", result.admissionNumber?.digits)
+        assertEquals(listOf("D"), result.answerArea?.questions?.single { it.questionIndex == 10 }?.selectedLabels)
         assertEquals(10.0, result.score?.totalScore ?: -1.0, 0.0)
     }
 
@@ -61,6 +78,30 @@ class DesktopWechatImageScanTest {
             }
         }
         return MiniProgramFrame(width = image.width, height = image.height, pixels = pixels)
+    }
+
+    private fun downscaleToWidth(frame: MiniProgramFrame, targetWidth: Int): MiniProgramFrame {
+        val scale = frame.width.toDouble() / targetWidth
+        val targetHeight = (frame.height / scale).roundToInt()
+        val pixels = IntArray(targetWidth * targetHeight)
+        for (row in 0 until targetHeight) {
+            val rowStart = (row * scale).toInt()
+            val rowEnd = (((row + 1) * scale).toInt()).coerceAtMost(frame.height).coerceAtLeast(rowStart + 1)
+            for (column in 0 until targetWidth) {
+                val columnStart = (column * scale).toInt()
+                val columnEnd = (((column + 1) * scale).toInt()).coerceAtMost(frame.width).coerceAtLeast(columnStart + 1)
+                var sum = 0L
+                var count = 0
+                for (r in rowStart until rowEnd) {
+                    for (c in columnStart until columnEnd) {
+                        sum += frame.pixels[r * frame.width + c]
+                        count += 1
+                    }
+                }
+                pixels[row * targetWidth + column] = (sum / count).toInt()
+            }
+        }
+        return MiniProgramFrame(width = targetWidth, height = targetHeight, pixels = pixels)
     }
 
     private fun findRootFile(fileName: String): File {

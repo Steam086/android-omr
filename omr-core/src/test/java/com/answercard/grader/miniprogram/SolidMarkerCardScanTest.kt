@@ -68,6 +68,31 @@ class SolidMarkerCardScanTest {
     }
 
     @Test
+    fun warpedHeaderlessSquareCardScansCorrectly() {
+        val template = TemplateState(
+            name = "headerless warp",
+            questions = (1..15).map { number ->
+                QuestionSetting(number = number, answer = "A", score = if (number == 1) 2 else 0)
+            },
+        ).withShowHeader(false)
+        val renderer = DesktopTemplateCardRenderer(template, scale = 3f)
+        renderer.markAnswer(1, "A")
+        val warped = TestPerspectiveWarp.warp(
+            frame = renderer.frame(),
+            luShift = 10 to 6,
+            ruShift = -20 to 4,
+            ldShift = 6 to -4,
+            rdShift = -14 to -10,
+        )
+        val result = AndroidOmrEngine.scan(warped, template)
+
+        assertTrue(result.debugInfo.joinToString(), result.success)
+        assertTrue(result.debugInfo.contains("anchorPath=solid-marker"))
+        assertEquals(listOf("A"), result.answerArea?.questions?.single { it.questionIndex == 0 }?.selectedLabels)
+        assertEquals(2.0, result.score?.totalScore ?: -1.0, 0.0)
+    }
+
+    @Test
     fun lBracketCardStillScansViaFallback() {
         val renderer = DesktopTemplateCardRenderer(template(), scale = 3f, markerStyle = CornerMarkerStyle.L_BRACKET)
         renderer.markAnswer(1, "A")
