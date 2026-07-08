@@ -41,6 +41,22 @@ class DesktopHeaderlessTemplateScanTest {
     }
 
     @Test
+    fun scansHeaderCardWithBlankAdmissionNumber() {
+        val template = sampleTemplate(showHeader = true)
+        val renderer = DesktopTemplateCardRenderer(template)
+        markSampleAnswers(renderer)
+
+        val result = AndroidOmrEngine.scan(frame = renderer.frame(), template = template)
+
+        assertTrue(result.failureReason ?: result.debugInfo.joinToString(), result.success)
+        assertEquals("????", result.admissionNumber?.digits)
+        assertEquals(true, result.admissionNumber?.success)
+        assertTrue(result.warnings.any { it.contains("admission number contains blank digit") })
+        assertSampleAnswers(result)
+        assertEquals(10.0, result.score?.totalScore ?: -1.0, 0.0)
+    }
+
+    @Test
     fun headerlessCardIsRenderedShorterThanHeaderCard() {
         val header = DesktopTemplateCardRenderer(sampleTemplate(showHeader = true)).frame()
         val headerless = DesktopTemplateCardRenderer(sampleTemplate(showHeader = false)).frame()

@@ -213,6 +213,9 @@ object AndroidOmrEngine {
         if (admissionNumber.failureReason != null) {
             warnings += "admission number: ${admissionNumber.failureReason}"
         }
+        if (admissionNumber.digitResults.any { it.isBlank }) {
+            warnings += "admission number contains blank digit"
+        }
         val failureReason = when {
             admissionNumber.failureReason != null -> "admission number failed: ${admissionNumber.failureReason}"
             score.warnings.isNotEmpty() -> "score warnings: ${score.warnings.joinToString()}"

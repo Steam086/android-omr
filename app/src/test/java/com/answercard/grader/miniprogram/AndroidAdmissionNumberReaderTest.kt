@@ -43,7 +43,7 @@ class AndroidAdmissionNumberReaderTest {
     }
 
     @Test
-    fun reportsBlankDigitWithPlaceholder() {
+    fun readsBlankDigitAsSuccessWithPlaceholder() {
         val fixture = Fixture()
         fixture.mark(digitIndex = 0, numberValue = 1)
         fixture.mark(digitIndex = 2, numberValue = 3)
@@ -51,11 +51,23 @@ class AndroidAdmissionNumberReaderTest {
 
         val result = AndroidAdmissionNumberReader.read(fixture.frame(), fixture.grid, fixture.layout)
 
-        assertFalse(result.success)
+        assertTrue(result.success)
+        assertNull(result.failureReason)
         assertEquals("1?34", result.digits)
-        assertEquals("admission number contains blank digit", result.failureReason)
         assertTrue(result.digitResults[1].isBlank)
         assertNull(result.digitResults[1].selectedNumber)
+    }
+
+    @Test
+    fun readsFullyBlankAdmissionNumberAsSuccess() {
+        val fixture = Fixture()
+
+        val result = AndroidAdmissionNumberReader.read(fixture.frame(), fixture.grid, fixture.layout)
+
+        assertTrue(result.success)
+        assertNull(result.failureReason)
+        assertEquals("????", result.digits)
+        assertTrue(result.digitResults.all { it.isBlank })
     }
 
     @Test

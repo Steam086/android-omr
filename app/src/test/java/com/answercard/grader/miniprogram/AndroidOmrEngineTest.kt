@@ -90,7 +90,7 @@ class AndroidOmrEngineTest {
     }
 
     @Test
-    fun keepsAnswerAreaAndScoreWhenAdmissionNumberFails() {
+    fun scansCardWithBlankAdmissionNumberAsSuccess() {
         val template = templateForSuccessfulPath()
         val synthetic = AndroidOmrSyntheticFrameFactory(template)
         synthetic.markAnswer(questionIndex = 0, optionIndex = 0)
@@ -105,8 +105,10 @@ class AndroidOmrEngineTest {
             grid = synthetic.grid,
         )
 
-        assertFalse(result.success)
-        assertEquals("admission number failed: admission number contains blank digit", result.failureReason)
+        assertTrue(result.success)
+        assertNull(result.failureReason)
+        assertEquals("????", result.admissionNumber?.digits)
+        assertTrue(result.warnings.any { it.contains("admission number contains blank digit") })
         assertNotNull(result.answerArea)
         assertNotNull(result.score)
         assertEquals(10.0, result.score?.totalScore ?: -1.0, 0.0)

@@ -17,4 +17,11 @@ class ScoreSpeechTextTest {
 
         assertEquals("得分18分，满分30分", text)
     }
+
+    @Test
+    fun omitsExamIdWithBlankPlaceholderDigits() {
+        val text = ScoreSpeechText.build(totalScore = 4, maxScore = 30, examId = "?878")
+
+        assertEquals("得分4分，满分30分", text)
+    }
 }

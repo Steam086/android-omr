@@ -132,8 +132,6 @@ object AndroidAdmissionNumberReader {
         val failureReason = when {
             digitResults.any { it.failureReason == "digit must contain 10 candidates" } ->
                 "admission number has incomplete digit candidates"
-            digitResults.any { it.isBlank } ->
-                "admission number contains blank digit"
             else -> null
         }
 
