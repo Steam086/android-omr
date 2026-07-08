@@ -86,3 +86,15 @@
 - `StabilityEvaluator`：稳定窗口、抖动打断、传感器缺失。
 - 回归：`DesktopWechatImageScanTest`（L 形回退路径）必须继续通过；
   复跑 `DesktopCameraInstabilityProbeTest` 对比方块卡改造前后的分数稳定性。
+
+## 验证结果（实施后）
+
+- L 形微信照片探针（legacy 回退路径 + 透视映射 + 最近中心匹配，`camera-instability-probe.txt`）：
+  ds1280 现为 10.0/10.0，与全分辨率一致（此前为 8/10 且 Q11 D→C 翻转，现已消除）；
+  cornerShadow35 由此前 6/10 提升为 10.0/10.0；blur1+noise3 五个种子中 3 个可见失败
+  （`invalid card geometry` / `projected cell too small`，即拒绝而非误判），2 个成功且均为
+  10.0/10.0（此前为 8/8/6/6/失败的部分错分模式），无一例"判成别的选项"的沉默错分。
+- 方块卡稳定性回归（`SolidMarkerCardStabilityTest`）：1280 宽 + blur1 + noise3 × 8 种子,
+  成功帧全部 10/10 且学号一致。
+- 已知基线失败（与本次改动无关，改动前后均失败）：`AndroidOmrImageScanTest` 3 例、
+  `CornerAnchorMatcherTest` 4 例。
