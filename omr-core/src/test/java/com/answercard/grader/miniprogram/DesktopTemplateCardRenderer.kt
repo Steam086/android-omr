@@ -21,7 +21,7 @@ import kotlin.math.roundToInt
 class DesktopTemplateCardRenderer(
     template: TemplateState,
     private val scale: Float = 3f,
-    private val markerStyle: CornerMarkerStyle = CornerMarkerStyle.L_BRACKET,
+    private val markerStyle: CornerMarkerStyle = CornerMarkerStyle.SOLID_SQUARE,
 ) {
     private val layout: CardLayout = TemplateGeometry.buildLayout(template)
     private val image: BufferedImage = BufferedImage(

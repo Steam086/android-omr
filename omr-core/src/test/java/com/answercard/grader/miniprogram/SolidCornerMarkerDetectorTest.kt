@@ -43,7 +43,11 @@ class SolidCornerMarkerDetectorTest {
 
     @Test
     fun returnsNullOnLBracketCard() {
-        val renderer = DesktopTemplateCardRenderer(TemplateState.default(), scale = 3f)
+        val renderer = DesktopTemplateCardRenderer(
+            TemplateState.default(),
+            scale = 3f,
+            markerStyle = CornerMarkerStyle.L_BRACKET,
+        )
         val anchors = SolidCornerMarkerDetector.findAnchors(renderer.frame())
         assertNull(anchors)
     }

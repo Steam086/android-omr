@@ -43,7 +43,7 @@ object TemplateRenderer {
             typeface = Typeface.DEFAULT_BOLD
         }
 
-        drawCornerBrackets(canvas, layout, fill)
+        drawCornerMarkers(canvas, layout, fill)
         canvas.save()
         canvas.translate(TemplateGeometry.PAGE_MARGIN, TemplateGeometry.PAGE_MARGIN)
         if (layout.showHeader) {
@@ -68,24 +68,11 @@ object TemplateRenderer {
     fun renderPng(template: TemplateState, scale: Float = 3f): ByteArray =
         renderPng(TemplateGeometry.buildLayout(template), scale)
 
-    private fun drawCornerBrackets(canvas: Canvas, layout: CardLayout, paint: Paint) {
-        val size = TemplateGeometry.CORNER_BRACKET_SIZE
-        val thick = TemplateGeometry.CORNER_BRACKET_THICKNESS
-        val left = TemplateGeometry.CORNER_BRACKET_MARGIN
-        val top = TemplateGeometry.CORNER_BRACKET_MARGIN
-        val right = TemplateGeometry.renderedWidth(layout) - TemplateGeometry.CORNER_BRACKET_MARGIN
-        val bottom = TemplateGeometry.renderedHeight(layout) - TemplateGeometry.CORNER_BRACKET_MARGIN
-        val pieces = listOf(
-            Rect(left, top, size, thick),
-            Rect(left, top, thick, size),
-            Rect(right - size, top, size, thick),
-            Rect(right - thick, top, thick, size),
-            Rect(left, bottom - thick, size, thick),
-            Rect(left, bottom - size, thick, size),
-            Rect(right - size, bottom - thick, size, thick),
-            Rect(right - thick, bottom - size, thick, size),
-        )
-        pieces.forEach { canvas.drawRect(it.x, it.y, it.x + it.w, it.y + it.h, paint) }
+    private fun drawCornerMarkers(canvas: Canvas, layout: CardLayout, paint: Paint) {
+        val rects = TemplateGeometry.cornerMarkerRects(layout)
+        listOf(rects.lu, rects.ru, rects.ld, rects.rd).forEach { rect ->
+            canvas.drawRect(rect.x, rect.y, rect.x + rect.w, rect.y + rect.h, paint)
+        }
     }
 
     private fun drawHeaderDivider(canvas: Canvas, layout: CardLayout) {

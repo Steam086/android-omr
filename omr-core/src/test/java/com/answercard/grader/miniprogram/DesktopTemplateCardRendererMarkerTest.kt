@@ -33,12 +33,12 @@ class DesktopTemplateCardRendererMarkerTest {
     }
 
     @Test
-    fun defaultModeStillDrawsLBrackets() {
+    fun defaultModeDrawsSolidSquares() {
         val renderer = DesktopTemplateCardRenderer(template = TemplateState.default(), scale = 3f)
         val frame = renderer.frame()
         val scale = 3f
         val armRow = ((TemplateGeometry.CORNER_BRACKET_MARGIN + 4f) * scale).toInt()
         val armColumn = ((TemplateGeometry.CORNER_BRACKET_MARGIN + 30f) * scale).toInt()
-        assertTrue("bracket arm should be dark in L mode", frame[armRow, armColumn] < 100)
+        assertTrue("bracket arm area should be white by default", frame[armRow, armColumn] > 200)
     }
 }
