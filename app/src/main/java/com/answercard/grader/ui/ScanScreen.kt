@@ -38,9 +38,12 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.answercard.grader.camera.CameraAnalysisConfig
 import com.answercard.grader.camera.CameraPreview
+import com.answercard.grader.camera.DeviceStabilityMonitor
 import com.answercard.grader.miniprogram.AndroidOmrAnalyzerOptions
 import com.answercard.grader.miniprogram.AndroidOmrImageAnalyzer
 import com.answercard.grader.miniprogram.OmrAnalysisOrientationMode
+import com.answercard.grader.miniprogram.ScanConsensusDecision
+import com.answercard.grader.miniprogram.ScanConsensusTracker
 import com.answercard.grader.records.ScanRecord
 import com.answercard.grader.records.ScanRecordStore
 import com.answercard.grader.speech.ScoreSpeaker
@@ -77,6 +80,20 @@ fun ScanScreen(
     var lastScanAt by remember { mutableLongStateOf(0L) }
     var lastHandledKey by remember { mutableStateOf<String?>(null) }
     var displayResult by remember { mutableStateOf<ScanDisplayResult?>(null) }
+    var lockedScoreText by remember { mutableStateOf<String?>(null) }
+    var deviceStable by remember { mutableStateOf(true) }
+    var stabilityGateEnabled by rememberSaveable { mutableStateOf(true) }
+    val currentStabilityGateEnabled = rememberUpdatedState(stabilityGateEnabled)
+    val consensusTracker = remember(template) { ScanConsensusTracker() }
+    val stabilityMonitor = remember {
+        DeviceStabilityMonitor(context) { stable ->
+            mainHandler.post { deviceStable = stable }
+        }
+    }
+    DisposableEffect(stabilityMonitor) {
+        stabilityMonitor.start()
+        onDispose { stabilityMonitor.stop() }
+    }
     var status by remember { mutableStateOf("Scanning") }
     val currentSoundEnabled = rememberUpdatedState(soundEnabled)
     val currentTemplateId = rememberUpdatedState(templateId)
@@ -94,33 +111,37 @@ fun ScanScreen(
                 mainHandler.post {
                     displayResult = ScanDisplayResult.fromAndroidOmrResult(result)
                     status = if (result.success) "Recognized" else "Not recognized"
-                    val score = result.score
-                    val examId = result.admissionNumber?.digits.orEmpty()
-                    val examIdReady = examId.isNotBlank() || !template.showHeader
-                    if (result.success && score != null && examIdReady) {
-                        val handledKey = "$examId:${score.totalScore}/${score.maxScore}"
-                        if (handledKey != lastHandledKey) {
-                            lastHandledKey = handledKey
-                            recordStore.saveRecord(
-                                ScanRecord(
-                                    templateId = currentTemplateId.value,
-                                    templateName = template.name,
-                                    examId = examId,
-                                    totalScore = score.totalScore.roundToInt(),
-                                    maxScore = score.maxScore.roundToInt(),
-                                    scannedAt = LocalDateTime.now(),
-                                ),
-                            )
-                            if (currentSoundEnabled.value) {
-                                speaker.speak(
-                                    ScoreSpeechText.build(
+                    when (val decision = consensusTracker.offer(result)) {
+                        is ScanConsensusDecision.Locked -> {
+                            val score = decision.result.score
+                            val examId = decision.result.admissionNumber?.digits.orEmpty()
+                            val examIdReady = examId.isNotBlank() || !template.showHeader
+                            if (score != null && examIdReady) {
+                                lockedScoreText = "${score.totalScore.roundToInt()}/${score.maxScore.roundToInt()}"
+                                recordStore.saveRecord(
+                                    ScanRecord(
+                                        templateId = currentTemplateId.value,
+                                        templateName = template.name,
+                                        examId = examId,
                                         totalScore = score.totalScore.roundToInt(),
                                         maxScore = score.maxScore.roundToInt(),
-                                        examId = examId,
+                                        scannedAt = LocalDateTime.now(),
                                     ),
                                 )
+                                if (currentSoundEnabled.value) {
+                                    speaker.speak(
+                                        ScoreSpeechText.build(
+                                            totalScore = score.totalScore.roundToInt(),
+                                            maxScore = score.maxScore.roundToInt(),
+                                            examId = examId,
+                                        ),
+                                    )
+                                }
                             }
                         }
+                        is ScanConsensusDecision.Pending,
+                        is ScanConsensusDecision.AlreadyLocked,
+                        -> Unit
                     }
                 }
             },
@@ -141,6 +162,7 @@ fun ScanScreen(
                 analysisOrientationMode = analysisOrientationMode,
                 requestedAnalysisResolutionLabel = CameraAnalysisConfig.RequestedResolutionLabel,
             ),
+            stabilityGate = { !currentStabilityGateEnabled.value || stabilityMonitor.isStable() },
         )
     }
 
@@ -171,6 +193,9 @@ fun ScanScreen(
                     },
                 ) {
                     Text("Direction: ${analysisOrientationMode.label()}")
+                }
+                OutlinedButton(onClick = { stabilityGateEnabled = !stabilityGateEnabled }) {
+                    Text(if (stabilityGateEnabled) "Steady: On" else "Steady: Off")
                 }
                 OutlinedButton(onClick = { soundEnabled = !soundEnabled }) {
                     Text(if (soundEnabled) "Sound" else "Silent")
@@ -234,6 +259,23 @@ fun ScanScreen(
                 }
             } else {
                 PermissionPrompt(onRequestPermission = { launcher.launch(Manifest.permission.CAMERA) })
+            }
+
+            lockedScoreText?.let { locked ->
+                Text(
+                    text = locked,
+                    color = Color.White,
+                    style = MaterialTheme.typography.displayMedium,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp),
+                )
+            }
+            if (stabilityGateEnabled && !deviceStable) {
+                Text(
+                    text = "Hold steady…",
+                    color = Color.Yellow,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.align(Alignment.Center),
+                )
             }
 
             ScanStatusPanel(
