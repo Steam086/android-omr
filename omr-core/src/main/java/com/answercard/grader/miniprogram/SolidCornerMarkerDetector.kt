@@ -8,9 +8,9 @@ object SolidCornerMarkerDetector {
     private const val MIN_FILL_RATIO = 0.85f
     private const val MIN_SIZE_RATIO = 0.012
 
-    // Corner markers have a fixed absolute size while card height shrinks for short cards
-    // (e.g. a single-band, headerless card). The shortest supported card renders markers at
-    // roughly 13.5% of its minimum dimension, so this needs headroom above that floor.
+    // Floor case: headerless single-band card renders 192 template units tall, so the
+    // 26-unit corner marker is ~13.5% of the min frame dimension; 0.16 adds headroom for
+    // perspective enlargement of near-corner markers. False positives stay gated by aspect/fill/spread.
     private const val MAX_SIZE_RATIO = 0.16
     private const val MAX_BOX_ASPECT_DEVIATION = 0.35
     private const val MAX_CANDIDATES_PER_CORNER = 3
