@@ -34,34 +34,98 @@ object AndroidSolidMarkDetector {
         anchors: MiniProgramAnchors,
     ): AndroidSolidMarkOverlay {
         val cardLayout = TemplateGeometry.buildLayout(template)
-        val source = solidMarkSourceReference(cardLayout, anchors)
         val components = denseComponents(frame)
-        val questionCells = mutableSetOf<AndroidPaperQuestionCellKey>()
-        val admissionNumberCells = mutableSetOf<AndroidPaperAdmissionNumberCellKey>()
         val questionIndexByNumber = template.questions
             .mapIndexed { index, question -> question.number to index }
             .toMap()
 
+        // Trace anchors may sit on the outer or the inner edge of the right corner brackets
+        // depending on the capture, so match against both references and keep the one whose
+        // inverted mark centers explain more dense components, closest to the cell centers;
+        // remaining ties keep the legacy source-based preference (candidate order).
+        val candidates = sourceReferenceCandidates(cardLayout, anchors)
+        val best = candidates
+            .map { (name, source) ->
+                matchComponents(
+                    components = components,
+                    anchors = anchors,
+                    source = source,
+                    cardLayout = cardLayout,
+                    questionIndexByNumber = questionIndexByNumber,
+                    admissionNumberDigits = template.examIdDigits,
+                    referenceName = name,
+                )
+            }
+            .sortedWith(
+                compareByDescending<ComponentMatchResult> { it.matchedComponents }
+                    .thenBy { it.totalCenterDistance },
+            )
+            .first()
+
+        return AndroidSolidMarkOverlay(
+            questionCells = best.questionCells,
+            admissionNumberCells = best.admissionNumberCells,
+            debugInfo = listOf(
+                "solidMarkComponents=${components.size}",
+                "solidMarkReference=${best.referenceName}",
+                "solidQuestionMarks=${best.questionCells.size}",
+                "solidAdmissionMarks=${best.admissionNumberCells.size}",
+            ),
+        )
+    }
+
+    private data class ComponentMatchResult(
+        val referenceName: String,
+        val questionCells: Set<AndroidPaperQuestionCellKey>,
+        val admissionNumberCells: Set<AndroidPaperAdmissionNumberCellKey>,
+        val matchedComponents: Int,
+        val totalCenterDistance: Double,
+    )
+
+    private fun matchComponents(
+        components: List<Component>,
+        anchors: MiniProgramAnchors,
+        source: CornerAnchorReferencePoints,
+        cardLayout: CardLayout,
+        questionIndexByNumber: Map<Int, Int>,
+        admissionNumberDigits: Int,
+        referenceName: String,
+    ): ComponentMatchResult {
+        val questionCells = mutableSetOf<AndroidPaperQuestionCellKey>()
+        val admissionNumberCells = mutableSetOf<AndroidPaperAdmissionNumberCellKey>()
+        var matchedComponents = 0
+        var totalCenterDistance = 0.0
         components.forEach { component ->
             val sourcePoint = invert(
                 target = MiniProgramGridPoint(row = component.centerRow, column = component.centerColumn),
                 anchors = anchors,
                 source = source,
             ) ?: return@forEach
-            matchQuestionCell(cardLayout, questionIndexByNumber, sourcePoint)?.let(questionCells::add)
-            matchAdmissionNumberCell(cardLayout, template.examIdDigits, sourcePoint)?.let(admissionNumberCells::add)
+            val question = matchQuestionCell(cardLayout, questionIndexByNumber, sourcePoint)
+            val admission = matchAdmissionNumberCell(cardLayout, admissionNumberDigits, sourcePoint)
+            question?.let { match ->
+                questionCells += match.key
+                totalCenterDistance += match.centerDistance
+            }
+            admission?.let { match ->
+                admissionNumberCells += match.key
+                totalCenterDistance += match.centerDistance
+            }
+            if (question != null || admission != null) matchedComponents += 1
         }
-
-        return AndroidSolidMarkOverlay(
+        return ComponentMatchResult(
+            referenceName = referenceName,
             questionCells = questionCells,
             admissionNumberCells = admissionNumberCells,
-            debugInfo = listOf(
-                "solidMarkComponents=${components.size}",
-                "solidQuestionMarks=${questionCells.size}",
-                "solidAdmissionMarks=${admissionNumberCells.size}",
-            ),
+            matchedComponents = matchedComponents,
+            totalCenterDistance = totalCenterDistance,
         )
     }
+
+    private data class CellMatch<T>(
+        val key: T,
+        val centerDistance: Double,
+    )
 
     private fun denseComponents(frame: MiniProgramFrame): List<Component> {
         val threshold = MiniProgramGeometry.threshold(frame)
@@ -81,7 +145,7 @@ object AndroidSolidMarkDetector {
         cardLayout: CardLayout,
         questionIndexByNumber: Map<Int, Int>,
         sourcePoint: TemplatePoint,
-    ): AndroidPaperQuestionCellKey? {
+    ): CellMatch<AndroidPaperQuestionCellKey>? {
         val option = cardLayout.options.firstOrNull { option ->
             TemplateGeometry.renderedRect(option.rect).contains(sourcePoint)
         } ?: return null
@@ -90,14 +154,18 @@ object AndroidSolidMarkDetector {
             .filter { it.question == option.question }
             .indexOfFirst { it.option == option.option }
             .takeIf { it >= 0 } ?: return null
-        return AndroidPaperQuestionCellKey(questionIndex, optionIndex)
+        return CellMatch(
+            key = AndroidPaperQuestionCellKey(questionIndex, optionIndex),
+            centerDistance = TemplateGeometry.renderedRect(option.rect).centerDistance(sourcePoint),
+        )
     }
 
     private fun matchAdmissionNumberCell(
         cardLayout: CardLayout,
         admissionNumberDigits: Int,
         sourcePoint: TemplatePoint,
-    ): AndroidPaperAdmissionNumberCellKey? {
+    ): CellMatch<AndroidPaperAdmissionNumberCellKey>? {
+        if (cardLayout.examIdRows.isEmpty()) return null
         for (digitIndex in 0 until admissionNumberDigits) {
             for (numberValue in 0..9) {
                 val rect = TemplateGeometry.renderedRect(
@@ -108,7 +176,10 @@ object AndroidSolidMarkDetector {
                     ),
                 )
                 if (rect.contains(sourcePoint)) {
-                    return AndroidPaperAdmissionNumberCellKey(digitIndex, numberValue)
+                    return CellMatch(
+                        key = AndroidPaperAdmissionNumberCellKey(digitIndex, numberValue),
+                        centerDistance = rect.centerDistance(sourcePoint),
+                    )
                 }
             }
         }
@@ -121,32 +192,40 @@ object AndroidSolidMarkDetector {
             point.y >= y - RECT_TOLERANCE &&
             point.y <= y + h + RECT_TOLERANCE
 
-    private fun solidMarkSourceReference(
+    private fun Rect.centerDistance(point: TemplatePoint): Double {
+        val dx = (point.x - (x + w / 2f)).toDouble()
+        val dy = (point.y - (y + h / 2f)).toDouble()
+        return kotlin.math.sqrt(dx * dx + dy * dy)
+    }
+
+    private fun sourceReferenceCandidates(
         cardLayout: CardLayout,
         anchors: MiniProgramAnchors,
-    ): CornerAnchorReferencePoints {
+    ): List<Pair<String, CornerAnchorReferencePoints>> {
         val reference = TemplateGeometry.cornerAnchorReference(cardLayout)
-        val strongTraceCount = listOf(anchors.lu, anchors.ld, anchors.ru, anchors.rd)
-            .count { it.source == "strong-trace" }
-        if (strongTraceCount < 3) {
-            return CornerAnchorReferencePoints(
-                lu = reference.lu,
-                ld = reference.ld,
-                ru = reference.ru,
-                rd = reference.rd,
-            )
-        }
+        val outer = CornerAnchorReferencePoints(
+            lu = reference.lu,
+            ld = reference.ld,
+            ru = reference.ru,
+            rd = reference.rd,
+        )
 
         val adjustedRight = reference.ru.x -
             (TemplateGeometry.CORNER_BRACKET_SIZE - TemplateGeometry.CORNER_BRACKET_THICKNESS)
-        val adjustedRu = TemplatePoint(adjustedRight, reference.ru.y)
-        val adjustedRd = TemplatePoint(adjustedRight, reference.rd.y)
-        return CornerAnchorReferencePoints(
+        val innerRight = CornerAnchorReferencePoints(
             lu = reference.lu,
             ld = reference.ld,
-            ru = adjustedRu,
-            rd = adjustedRd,
+            ru = TemplatePoint(adjustedRight, reference.ru.y),
+            rd = TemplatePoint(adjustedRight, reference.rd.y),
         )
+
+        val strongTraceCount = listOf(anchors.lu, anchors.ld, anchors.ru, anchors.rd)
+            .count { it.source == "strong-trace" }
+        return if (strongTraceCount < 3) {
+            listOf("outer" to outer, "innerRight" to innerRight)
+        } else {
+            listOf("innerRight" to innerRight, "outer" to outer)
+        }
     }
 
     private fun invert(
