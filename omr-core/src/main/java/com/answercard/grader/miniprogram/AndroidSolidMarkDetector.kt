@@ -83,7 +83,7 @@ object AndroidSolidMarkDetector {
     )
 
     private fun matchComponents(
-        components: List<Component>,
+        components: List<MiniProgramComponent>,
         anchors: MiniProgramAnchors,
         source: CornerAnchorReferencePoints,
         cardLayout: CardLayout,
@@ -127,18 +127,18 @@ object AndroidSolidMarkDetector {
         val centerDistance: Double,
     )
 
-    private fun denseComponents(frame: MiniProgramFrame): List<Component> {
+    private fun denseComponents(frame: MiniProgramFrame): List<MiniProgramComponent> {
         val threshold = MiniProgramGeometry.threshold(frame)
-        val mask = BooleanArray(frame.width * frame.height) { index ->
-            frame.pixels[index] < threshold
-        }
         val minArea = maxOf(80, (frame.width * frame.height * MIN_COMPONENT_AREA_RATIO).toInt())
         val minSize = maxOf(8, (minOf(frame.width, frame.height) * MIN_COMPONENT_SIZE_RATIO).toInt())
-        return findComponents(mask, frame.width, frame.height)
+        return MiniProgramComponentScanner.scan(frame, threshold)
             .filter { component -> component.area >= minArea }
             .filter { component -> component.rect.width >= minSize && component.rect.height >= minSize }
             .filter { component -> component.fillRatio >= MIN_COMPONENT_FILL_RATIO }
-            .filterNot { component -> component.rect.touchesBorder(frame) }
+            .filterNot { component ->
+                component.rect.left <= 0 || component.rect.top <= 0 ||
+                    component.rect.right >= frame.width || component.rect.bottom >= frame.height
+            }
     }
 
     private fun matchQuestionCell(
@@ -284,96 +284,4 @@ object AndroidSolidMarkDetector {
         val ru: TemplatePoint,
         val rd: TemplatePoint,
     )
-
-    private data class ComponentRect(
-        val left: Int,
-        val top: Int,
-        val right: Int,
-        val bottom: Int,
-    ) {
-        val width: Int get() = right - left
-        val height: Int get() = bottom - top
-    }
-
-    private fun ComponentRect.touchesBorder(frame: MiniProgramFrame): Boolean =
-        left <= 0 ||
-            top <= 0 ||
-            right >= frame.width ||
-            bottom >= frame.height
-
-    private data class Component(
-        val rect: ComponentRect,
-        val area: Int,
-    ) {
-        val fillRatio: Float get() = area.toFloat() / (rect.width * rect.height).coerceAtLeast(1)
-        val centerColumn: Double get() = (rect.left + rect.right - 1) / 2.0
-        val centerRow: Double get() = (rect.top + rect.bottom - 1) / 2.0
-    }
-
-    private fun findComponents(mask: BooleanArray, width: Int, height: Int): List<Component> {
-        val visited = BooleanArray(mask.size)
-        val components = mutableListOf<Component>()
-        val queue = IntArray(mask.size)
-        for (row in 0 until height) {
-            for (column in 0 until width) {
-                val index = row * width + column
-                if (visited[index] || !mask[index]) {
-                    visited[index] = true
-                    continue
-                }
-                var minRow = row
-                var maxRow = row
-                var minColumn = column
-                var maxColumn = column
-                var count = 0
-                var head = 0
-                var tail = 0
-                queue[tail++] = index
-                visited[index] = true
-                while (head < tail) {
-                    val current = queue[head++]
-                    val currentRow = current / width
-                    val currentColumn = current % width
-                    count += 1
-                    minRow = minOf(minRow, currentRow)
-                    maxRow = maxOf(maxRow, currentRow)
-                    minColumn = minOf(minColumn, currentColumn)
-                    maxColumn = maxOf(maxColumn, currentColumn)
-                    tail = enqueue(mask, visited, queue, tail, width, height, currentRow - 1, currentColumn)
-                    tail = enqueue(mask, visited, queue, tail, width, height, currentRow + 1, currentColumn)
-                    tail = enqueue(mask, visited, queue, tail, width, height, currentRow, currentColumn - 1)
-                    tail = enqueue(mask, visited, queue, tail, width, height, currentRow, currentColumn + 1)
-                }
-                components += Component(
-                    rect = ComponentRect(
-                        left = minColumn,
-                        top = minRow,
-                        right = maxColumn + 1,
-                        bottom = maxRow + 1,
-                    ),
-                    area = count,
-                )
-            }
-        }
-        return components
-    }
-
-    private fun enqueue(
-        mask: BooleanArray,
-        visited: BooleanArray,
-        queue: IntArray,
-        tail: Int,
-        width: Int,
-        height: Int,
-        row: Int,
-        column: Int,
-    ): Int {
-        if (row !in 0 until height || column !in 0 until width) return tail
-        val index = row * width + column
-        if (visited[index]) return tail
-        visited[index] = true
-        if (!mask[index]) return tail
-        queue[tail] = index
-        return tail + 1
-    }
 }
