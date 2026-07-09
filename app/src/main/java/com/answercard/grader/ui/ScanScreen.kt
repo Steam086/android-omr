@@ -171,6 +171,7 @@ fun ScanScreen(
             options = AndroidOmrAnalyzerOptions(
                 analysisOrientationMode = analysisOrientationMode,
                 requestedAnalysisResolutionLabel = CameraAnalysisConfig.RequestedResolutionLabel,
+                minLaplacianVariance = CameraAnalysisConfig.MinFrameSharpness,
             ),
             stabilityGate = { !currentStabilityGateEnabled.value || stabilityMonitor.isStable() },
         )

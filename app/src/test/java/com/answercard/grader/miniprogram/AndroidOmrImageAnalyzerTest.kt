@@ -354,6 +354,78 @@ class AndroidOmrImageAnalyzerTest {
         assertTrue(image.closed)
     }
 
+    @Test
+    fun analyzeDropsBlurryFrameBelowSharpnessThreshold() {
+        var resultCount = 0
+        var processCount = 0
+        val analyzer = AndroidOmrImageAnalyzer(
+            templateProvider = { TemplateState.default() },
+            onResult = { resultCount++ },
+            frameAdapter = { MiniProgramFrame(width = 4, height = 4, pixels = IntArray(16) { 128 }) },
+            processor = AndroidOmrFrameProcessor { _, _ ->
+                processCount++
+                result(success = true)
+            },
+            options = AndroidOmrAnalyzerOptions(minLaplacianVariance = 10.0),
+        )
+        val image = FakeImageProxy()
+
+        analyzer.analyze(image)
+
+        assertEquals(0, processCount)
+        assertEquals(0, resultCount)
+        assertTrue(image.closed)
+    }
+
+    @Test
+    fun analyzeProcessesSharpFrameAboveSharpnessThreshold() {
+        var resultCount = 0
+        val analyzer = AndroidOmrImageAnalyzer(
+            templateProvider = { TemplateState.default() },
+            onResult = { resultCount++ },
+            frameAdapter = { MiniProgramFrame(width = 4, height = 4, pixels = sharpPixels()) },
+            processor = AndroidOmrFrameProcessor { _, _ -> result(success = true) },
+            options = AndroidOmrAnalyzerOptions(minLaplacianVariance = 10.0),
+        )
+        val image = FakeImageProxy()
+
+        analyzer.analyze(image)
+
+        assertEquals(1, resultCount)
+        assertTrue(image.closed)
+    }
+
+    @Test
+    fun analyzeReportsBlurryDropCountAndSharpnessOnLaterProcessedFrame() {
+        var nowMs = 1_000L
+        val debugSnapshots = mutableListOf<List<String>>()
+        val frames = ArrayDeque(
+            listOf(
+                MiniProgramFrame(width = 4, height = 4, pixels = IntArray(16) { 128 }),
+                MiniProgramFrame(width = 4, height = 4, pixels = sharpPixels()),
+            ),
+        )
+        val analyzer = AndroidOmrImageAnalyzer(
+            templateProvider = { TemplateState.default() },
+            onResult = { debugSnapshots += it.debugInfo },
+            frameAdapter = { frames.removeFirst() },
+            processor = AndroidOmrFrameProcessor { _, _ -> result(success = true) },
+            options = AndroidOmrAnalyzerOptions(minAnalyzeIntervalMs = 0L, minLaplacianVariance = 10.0),
+            nowMsProvider = { nowMs++ },
+        )
+
+        analyzer.analyze(FakeImageProxy(timestamp = 10L))
+        analyzer.analyze(FakeImageProxy(timestamp = 20L))
+
+        assertEquals(1, debugSnapshots.size)
+        assertTrue(debugSnapshots[0].contains("blurryFrameCount=1"))
+        assertTrue(debugSnapshots[0].contains("lastDroppedReason=blurry"))
+        assertTrue(debugSnapshots[0].any { it.startsWith("laplacianVariance=") })
+    }
+
+    // A hard black/white vertical split → strong Laplacian edge → high sharpness variance.
+    private fun sharpPixels(): IntArray = IntArray(16) { index -> if (index % 4 < 2) 0 else 255 }
+
     private fun result(success: Boolean): AndroidOmrResult =
         AndroidOmrResult(
             success = success,

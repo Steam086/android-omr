@@ -27,7 +27,9 @@ class AndroidOmrImageAnalyzer(
     private val throttledFrameCount = AtomicLong(0L)
     private val busyFrameCount = AtomicLong(0L)
     private val unstableFrameCount = AtomicLong(0L)
+    private val blurryFrameCount = AtomicLong(0L)
     private val lastDroppedReason = AtomicReference("none")
+    private val lastLaplacianVariance = AtomicReference(Double.NaN)
 
     override fun analyze(image: ImageProxy) {
         val currentFrameIndex = frameIndex.incrementAndGet()
@@ -57,16 +59,26 @@ class AndroidOmrImageAnalyzer(
             }
         }
         try {
-            val imageDebugInfo = image.debugInfo(
-                currentFrameIndex = currentFrameIndex,
-                processedAtMs = processedAtMs,
-                droppedReason = "processed",
-            )
             val frame = frameAdapter?.invoke(image)
                 ?: CameraImageProxyFrameAdapter.fromImageProxy(
                     image = image,
                     orientationMode = options.analysisOrientationMode,
                 )
+            if (options.minLaplacianVariance > 0.0) {
+                val sharpness = FrameSharpness.laplacianVariance(frame)
+                lastLaplacianVariance.set(sharpness)
+                if (sharpness < options.minLaplacianVariance) {
+                    droppedFrameCount.incrementAndGet()
+                    blurryFrameCount.incrementAndGet()
+                    lastDroppedReason.set("blurry")
+                    return
+                }
+            }
+            val imageDebugInfo = image.debugInfo(
+                currentFrameIndex = currentFrameIndex,
+                processedAtMs = processedAtMs,
+                droppedReason = "processed",
+            )
             val template = templateProvider()
             val frameDebugInfo = frame.debugInfo(template)
             val result = processor.process(frame = frame, template = template)
@@ -111,8 +123,10 @@ class AndroidOmrImageAnalyzer(
             "throttledFrameCount=${throttledFrameCount.get()}",
             "busyFrameCount=${busyFrameCount.get()}",
             "unstableFrameCount=${unstableFrameCount.get()}",
+            "blurryFrameCount=${blurryFrameCount.get()}",
             "analyzerBusy=${busy.get()}",
             "lastDroppedReason=${lastDroppedReason.get()}",
+            "laplacianVariance=${formatSharpness(lastLaplacianVariance.get())}",
             "ImageProxy=${width}x${height}",
             "cropRect=${crop.left},${crop.top},${crop.right - crop.left}x${crop.bottom - crop.top}",
             "rotationDegrees=${imageInfo.rotationDegrees}",
@@ -167,6 +181,9 @@ class AndroidOmrImageAnalyzer(
 
     private fun format(value: Double): String =
         "%.3f".format(Locale.US, value)
+
+    private fun formatSharpness(value: Double): String =
+        if (value.isNaN()) "disabled" else "%.1f".format(Locale.US, value)
 
     private enum class FrameGateDecision {
         Process,

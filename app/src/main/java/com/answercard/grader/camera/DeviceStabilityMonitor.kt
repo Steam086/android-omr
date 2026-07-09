@@ -15,29 +15,44 @@ class DeviceStabilityMonitor(
     private val sensorManager =
         context.applicationContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val gyroscope: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+
+    // Gravity-compensated acceleration, so a phone at rest reads ~0. Catches the pure
+    // translation (sliding) that the gyroscope is blind to.
+    private val linearAcceleration: Sensor? =
+        sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
     private var lastReported: Boolean? = null
 
     val hasGyroscope: Boolean get() = gyroscope != null
+    val hasLinearAcceleration: Boolean get() = linearAcceleration != null
+    private val hasMotionSensor: Boolean get() = gyroscope != null || linearAcceleration != null
 
     fun start() {
         gyroscope?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+        linearAcceleration?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+        }
     }
 
     fun stop() {
-        if (gyroscope != null) sensorManager.unregisterListener(this)
+        if (hasMotionSensor) sensorManager.unregisterListener(this)
     }
 
     fun isStable(nowMs: Long = System.currentTimeMillis()): Boolean =
-        gyroscope == null || evaluator.isStable(nowMs)
+        !hasMotionSensor || evaluator.isStable(nowMs)
 
     override fun onSensorChanged(event: SensorEvent) {
-        val speed = sqrt(
+        val magnitude = sqrt(
             event.values[0] * event.values[0] +
                 event.values[1] * event.values[1] +
                 event.values[2] * event.values[2],
         )
-        evaluator.onSample(timestampMs = System.currentTimeMillis(), angularSpeed = speed)
-        val stable = isStable()
+        val nowMs = System.currentTimeMillis()
+        when (event.sensor.type) {
+            Sensor.TYPE_GYROSCOPE -> evaluator.onGyroscopeSample(nowMs, magnitude)
+            Sensor.TYPE_LINEAR_ACCELERATION -> evaluator.onLinearAccelerationSample(nowMs, magnitude)
+            else -> return
+        }
+        val stable = isStable(nowMs)
         if (stable != lastReported) {
             lastReported = stable
             onStabilityChanged(stable)

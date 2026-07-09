@@ -2,6 +2,8 @@ package com.answercard.grader.camera
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.hardware.camera2.CaptureRequest
+import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -57,9 +59,14 @@ fun CameraPreview(
                     ),
                 )
                 .build()
-            val analysis = ImageAnalysis.Builder()
+            val analysisBuilder = ImageAnalysis.Builder()
                 .setResolutionSelector(resolutionSelector)
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            Camera2Interop.Extender(analysisBuilder).setCaptureRequestOption(
+                CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
+                CameraAnalysisConfig.TargetFrameRateRange,
+            )
+            val analysis = analysisBuilder
                 .build()
                 .also {
                     it.setAnalyzer(executor) { image ->
