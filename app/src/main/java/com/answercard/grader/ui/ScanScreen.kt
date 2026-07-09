@@ -117,7 +117,7 @@ fun ScanScreen(
             templateProvider = { template },
             onResult = { result ->
                 mainHandler.post {
-                    displayResult = ScanDisplayResult.fromAndroidOmrResult(result)
+                    displayResult = ScanDisplayResult.fromAndroidOmrResult(result, template)
                     status = if (result.success) "已识别" else "未识别"
                     when (val decision = consensusTracker.offer(result)) {
                         is ScanConsensusDecision.Locked -> {
@@ -305,6 +305,7 @@ fun ScanScreen(
 
             if (hasCameraPermission) {
                 ScanStatusPanel(
+                    template = template,
                     status = status,
                     result = displayResult,
                     soundEnabled = soundEnabled,
@@ -366,6 +367,7 @@ private fun PermissionPrompt(onRequestPermission: () -> Unit) {
 
 @Composable
 private fun ScanStatusPanel(
+    template: TemplateState,
     status: String,
     result: ScanDisplayResult?,
     soundEnabled: Boolean,
@@ -375,20 +377,36 @@ private fun ScanStatusPanel(
         Column(
             Modifier
                 .navigationBarsPadding()
-                .heightIn(max = 220.dp)
+                .heightIn(max = 420.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(status, color = Color.White, style = MaterialTheme.typography.titleMedium)
-            Text(if (soundEnabled) "声音：开" else "声音：关", color = Color.White)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    status,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                result?.scoreText?.let {
+                    Text("分数：$it", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                }
+                Text(if (soundEnabled) "声音：开" else "声音：关", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+            }
+            ScanResultTemplateView(
+                template = template,
+                result = result,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 300.dp),
+            )
             if (result != null) {
-                Text("识别：${if (result.isRecognized) "是" else "否"}", color = Color.White)
-                result.scoreText?.let { Text("分数：$it", color = Color.White) }
                 Text("考号：${result.examId ?: "无"}", color = Color.White)
                 result.friendlyMessage?.let { Text(it, color = Color.White) }
                 result.failureReason?.let { Text("失败原因：$it", color = Color.White) }
-                result.debugInfo.take(24).forEach { Text(it, color = Color.White) }
             }
         }
     }
