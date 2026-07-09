@@ -15,6 +15,7 @@ captures/
 local.properties
 答题卡助手_解包/
 .worktrees/
+.superpowers/
 
 # APK / generated artifacts
 *.apk
