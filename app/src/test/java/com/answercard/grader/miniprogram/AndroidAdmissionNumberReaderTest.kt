@@ -257,6 +257,7 @@ class AndroidAdmissionNumberReaderTest {
         assertTrue(result.success)
         assertEquals("1234", result.digits)
         assertEquals(1, result.digitResults[0].candidates.count { it.readResult.failureReason != null })
+        assertFalse(result.digitResults[0].candidates.single { it.numberValue == 9 }.readResult.isMarked)
         assertTrue(result.debugInfo.contains("candidateReadFailures=1"))
     }
 
