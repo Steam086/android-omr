@@ -2,6 +2,7 @@ package com.answercard.grader.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -17,8 +18,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -26,11 +30,14 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,16 +52,26 @@ fun MiniTopBar(
     Row(
         modifier
             .fillMaxWidth()
-            .height(UiTokens.StatusBarHeight + UiTokens.NavBarHeight)
             .background(Color.White)
-            .padding(top = UiTokens.StatusBarHeight, start = 16.dp, end = 16.dp),
+            .statusBarsPadding()
+            .height(UiTokens.NavBarHeight)
+            .padding(start = 16.dp, end = 16.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             left?.invoke()
         }
-        Text(title, fontSize = 17.sp, fontWeight = FontWeight.Medium, color = UiTokens.TextPrimary)
+        Text(
+            title,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Medium,
+            color = UiTokens.TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.weight(1.6f),
+        )
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
             right?.invoke()
         }
@@ -70,11 +87,13 @@ fun MiniBottomFrame(
     title: String? = null,
     content: @Composable () -> Unit,
 ) {
-    if (visible) {
+    val visibleState = remember { MutableTransitionState(false) }
+    visibleState.targetState = visible
+    if (visible || visibleState.currentState) {
         BackHandler(onBack = onDismiss)
     }
     AnimatedVisibility(
-        visible = visible,
+        visibleState = visibleState,
         enter = fadeIn(animationSpec = tween(300)),
         exit = fadeOut(animationSpec = tween(240)),
     ) {
@@ -84,33 +103,33 @@ fun MiniBottomFrame(
                 .background(Color.Black.copy(alpha = 0.35f))
                 .clickable(onClick = onDismiss),
         ) {
-            AnimatedVisibility(
-                visible = visible,
-                enter = slideInVertically(animationSpec = tween(300)) { it },
-                exit = slideOutVertically(animationSpec = tween(240)) { it },
-                modifier = Modifier.align(Alignment.BottomCenter),
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .animateEnterExit(
+                        enter = slideInVertically(animationSpec = tween(300)) { it },
+                        exit = slideOutVertically(animationSpec = tween(240)) { it },
+                    )
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                    .background(Color.White)
+                    .clickable(enabled = false) {}
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .then(if (height == null) Modifier else Modifier.height(height)),
             ) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .then(if (height == null) Modifier else Modifier.height(height))
-                        .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                        .background(Color.White)
-                        .clickable(enabled = false) {},
-                ) {
-                    if (!title.isNullOrBlank()) {
-                        Text(
-                            title,
-                            modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 14.dp),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = UiTokens.TextPrimary,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        )
-                    }
-                    content()
-                    Spacer(Modifier.height(UiTokens.HomeIndicatorHeight))
+                if (!title.isNullOrBlank()) {
+                    Text(
+                        title,
+                        modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 14.dp),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = UiTokens.TextPrimary,
+                        textAlign = TextAlign.Center,
+                    )
                 }
+                content()
+                Spacer(Modifier.height(12.dp))
             }
         }
     }
@@ -122,11 +141,13 @@ fun MiniCenterFrame(
     onDismiss: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    if (visible) {
+    val visibleState = remember { MutableTransitionState(false) }
+    visibleState.targetState = visible
+    if (visible || visibleState.currentState) {
         BackHandler(onBack = onDismiss)
     }
     AnimatedVisibility(
-        visible = visible,
+        visibleState = visibleState,
         enter = fadeIn(animationSpec = tween(300)),
         exit = fadeOut(animationSpec = tween(240)),
     ) {
@@ -134,7 +155,8 @@ fun MiniCenterFrame(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.35f))
-                .clickable(onClick = onDismiss),
+                .clickable(onClick = onDismiss)
+                .imePadding(),
             contentAlignment = Alignment.Center,
         ) {
             Box(
@@ -158,9 +180,9 @@ fun MiniConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     destructive: Boolean = false,
+    visible: Boolean = true,
 ) {
-    BackHandler(onBack = onDismiss)
-    MiniCenterFrame(visible = true, onDismiss = onDismiss) {
+    MiniCenterFrame(visible = visible, onDismiss = onDismiss) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(title, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = UiTokens.TextPrimary)
             Text(message, fontSize = 15.sp, color = UiTokens.TextSecondary)

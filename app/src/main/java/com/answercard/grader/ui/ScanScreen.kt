@@ -7,15 +7,24 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -34,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.answercard.grader.camera.CameraAnalysisConfig
@@ -94,7 +104,7 @@ fun ScanScreen(
         stabilityMonitor.start()
         onDispose { stabilityMonitor.stop() }
     }
-    var status by remember { mutableStateOf("Scanning") }
+    var status by remember { mutableStateOf("扫描中") }
     val currentSoundEnabled = rememberUpdatedState(soundEnabled)
     val currentTemplateId = rememberUpdatedState(templateId)
     var analysisOrientationModeName by rememberSaveable {
@@ -110,7 +120,7 @@ fun ScanScreen(
             onResult = { result ->
                 mainHandler.post {
                     displayResult = ScanDisplayResult.fromAndroidOmrResult(result)
-                    status = if (result.success) "Recognized" else "Not recognized"
+                    status = if (result.success) "已识别" else "未识别"
                     when (val decision = consensusTracker.offer(result)) {
                         is ScanConsensusDecision.Locked -> {
                             val score = decision.result.score
@@ -155,7 +165,7 @@ fun ScanScreen(
                         friendlyMessage = null,
                         debugInfo = emptyList(),
                     )
-                    status = "Recognition error"
+                    status = "识别出错"
                 }
             },
             options = AndroidOmrAnalyzerOptions(
@@ -175,33 +185,47 @@ fun ScanScreen(
     }
 
     Column(Modifier.fillMaxSize().background(Color.Black)) {
-        Row(
+        Column(
             Modifier
                 .fillMaxWidth()
-                .padding(top = UiTokens.StatusBarHeight, start = 12.dp, end = 12.dp, bottom = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+                .statusBarsPadding()
+                .padding(top = 4.dp, start = 12.dp, end = 12.dp, bottom = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            OutlinedButton(onClick = onBack) {
-                Text("Back")
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ScanChromeButton("返回", onClick = onBack)
+                Text(
+                    template.name,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
             }
-            Text(template.name, color = Color.White, style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = {
-                        analysisOrientationModeName = analysisOrientationMode.next().name
-                    },
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ScanChromeButton("方向：${analysisOrientationMode.label()}") {
+                    analysisOrientationModeName = analysisOrientationMode.next().name
+                }
+                ScanChromeButton(if (stabilityGateEnabled) "防抖：开" else "防抖：关") {
+                    stabilityGateEnabled = !stabilityGateEnabled
+                }
+                ScanChromeButton(if (soundEnabled) "声音：开" else "声音：关") {
+                    soundEnabled = !soundEnabled
+                }
+                Button(
+                    onClick = onOpenSetup,
+                    colors = ButtonDefaults.buttonColors(containerColor = UiTokens.Green, contentColor = Color.White),
                 ) {
-                    Text("Direction: ${analysisOrientationMode.label()}")
-                }
-                OutlinedButton(onClick = { stabilityGateEnabled = !stabilityGateEnabled }) {
-                    Text(if (stabilityGateEnabled) "Steady: On" else "Steady: Off")
-                }
-                OutlinedButton(onClick = { soundEnabled = !soundEnabled }) {
-                    Text(if (soundEnabled) "Sound" else "Silent")
-                }
-                Button(onClick = onOpenSetup) {
-                    Text("Answers")
+                    Text("答案")
                 }
             }
         }
@@ -223,7 +247,7 @@ fun ScanScreen(
                                 val result = OmrScanner.scan(bitmap, template, layout, scale = 3f)
                                 mainHandler.post {
                                     displayResult = ScanDisplayResult.fromLegacyResult(result)
-                                    status = if (result == null) "Not recognized" else "Recognized"
+                                    status = if (result == null) "未识别" else "已识别"
                                     if (result != null) {
                                         val handledKey =
                                             "${result.examId.orEmpty()}:${result.grade.totalScore}/${result.grade.maxScore}"
@@ -266,24 +290,33 @@ fun ScanScreen(
                     text = locked,
                     color = Color.White,
                     style = MaterialTheme.typography.displayMedium,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 24.dp)
+                        .background(Color(0x99000000), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 24.dp, vertical = 8.dp),
                 )
             }
             if (stabilityGateEnabled && !deviceStable) {
                 Text(
-                    text = "Hold steady…",
+                    text = "请持稳手机…",
                     color = Color.Yellow,
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.align(Alignment.Center),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .background(Color(0x99000000), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
 
-            ScanStatusPanel(
-                status = status,
-                result = displayResult,
-                soundEnabled = soundEnabled,
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-            )
+            if (hasCameraPermission) {
+                ScanStatusPanel(
+                    status = status,
+                    result = displayResult,
+                    soundEnabled = soundEnabled,
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                )
+            }
         }
     }
 }
@@ -297,16 +330,42 @@ private fun OmrAnalysisOrientationMode.next(): OmrAnalysisOrientationMode =
 
 private fun OmrAnalysisOrientationMode.label(): String =
     when (this) {
-        OmrAnalysisOrientationMode.LANDSCAPE_TEMPLATE -> "Landscape"
-        OmrAnalysisOrientationMode.FOLLOW_IMAGE_ROTATION -> "Follow"
-        OmrAnalysisOrientationMode.PORTRAIT_TEMPLATE -> "Portrait"
+        OmrAnalysisOrientationMode.LANDSCAPE_TEMPLATE -> "横版"
+        OmrAnalysisOrientationMode.FOLLOW_IMAGE_ROTATION -> "跟随"
+        OmrAnalysisOrientationMode.PORTRAIT_TEMPLATE -> "竖版"
     }
+
+@Composable
+private fun ScanChromeButton(label: String, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.6f)),
+    ) {
+        Text(label, maxLines = 1)
+    }
+}
 
 @Composable
 private fun PermissionPrompt(onRequestPermission: () -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Button(onClick = onRequestPermission) {
-            Text("Enable camera")
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 32.dp),
+        ) {
+            Text("需要相机权限才能扫描答题卡", color = Color.White, style = MaterialTheme.typography.titleMedium)
+            Text(
+                "如未弹出授权窗口，请前往系统设置开启相机权限",
+                color = Color.White.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Button(
+                onClick = onRequestPermission,
+                colors = ButtonDefaults.buttonColors(containerColor = UiTokens.Green, contentColor = Color.White),
+            ) {
+                Text("开启相机")
+            }
         }
     }
 }
@@ -319,15 +378,22 @@ private fun ScanStatusPanel(
     modifier: Modifier = Modifier,
 ) {
     Surface(color = Color(0xCC000000), modifier = modifier) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(
+            Modifier
+                .navigationBarsPadding()
+                .heightIn(max = 220.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             Text(status, color = Color.White, style = MaterialTheme.typography.titleMedium)
-            Text(if (soundEnabled) "Sound: on" else "Sound: off", color = Color.White)
+            Text(if (soundEnabled) "声音：开" else "声音：关", color = Color.White)
             if (result != null) {
-                Text("Recognized: ${if (result.isRecognized) "yes" else "no"}", color = Color.White)
-                result.scoreText?.let { Text("Score: $it", color = Color.White) }
-                Text("Admission: ${result.examId ?: "blank"}", color = Color.White)
+                Text("识别：${if (result.isRecognized) "是" else "否"}", color = Color.White)
+                result.scoreText?.let { Text("分数：$it", color = Color.White) }
+                Text("考号：${result.examId ?: "无"}", color = Color.White)
                 result.friendlyMessage?.let { Text(it, color = Color.White) }
-                result.failureReason?.let { Text("Failure: $it", color = Color.White) }
+                result.failureReason?.let { Text("失败原因：$it", color = Color.White) }
                 result.debugInfo.take(24).forEach { Text(it, color = Color.White) }
             }
         }

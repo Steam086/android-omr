@@ -58,7 +58,7 @@ class ScanDisplayResultTest {
         )
 
         assertFalse(display.isRecognized)
-        assertEquals("Projected cell too small: Q1A=10x8. Move closer or increase analysis resolution.", display.friendlyMessage)
+        assertEquals("识别单元格过小：Q1A=10x8。请靠近拍摄或提高分析分辨率。", display.friendlyMessage)
     }
 
     private fun androidResult(

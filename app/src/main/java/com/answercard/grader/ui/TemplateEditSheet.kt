@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,6 +25,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +49,7 @@ fun TemplateEditSheet(
     onTemplateChange: (TemplateState) -> Unit,
     onClose: () -> Unit,
     onPrint: () -> Unit,
+    visible: Boolean = true,
 ) {
     var addDialogOpen by remember { mutableStateOf(false) }
     var editTarget by remember { mutableStateOf<QuestionSetting?>(null) }
@@ -55,7 +58,7 @@ fun TemplateEditSheet(
     var examDialogOpen by remember { mutableStateOf(false) }
     val selectedCount = template.questions.count { it.selected }
 
-    MiniBottomFrame(visible = true, onDismiss = onClose, height = 520.dp) {
+    MiniBottomFrame(visible = visible, onDismiss = onClose, height = 520.dp) {
         Column(Modifier.fillMaxWidth()) {
             Row(
                 Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
@@ -152,8 +155,11 @@ fun TemplateEditSheet(
         },
     )
 
-    editTarget?.let { question ->
+    var displayedEditTarget by remember { mutableStateOf<QuestionSetting?>(null) }
+    if (editTarget != null) displayedEditTarget = editTarget
+    displayedEditTarget?.let { question ->
         EditQuestionDialog(
+            visible = editTarget != null,
             question = question,
             onDismiss = { editTarget = null },
             onConfirm = { request ->
@@ -163,8 +169,11 @@ fun TemplateEditSheet(
         )
     }
 
-    deleteTarget?.let { question ->
+    var displayedDeleteTarget by remember { mutableStateOf<QuestionSetting?>(null) }
+    if (deleteTarget != null) displayedDeleteTarget = deleteTarget
+    displayedDeleteTarget?.let { question ->
         MiniConfirmDialog(
+            visible = deleteTarget != null,
             title = "删除题目",
             message = "确认要删除第 ${question.number} 题吗？",
             confirmText = "删除",
@@ -210,19 +219,19 @@ private fun EditQuestionRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(44.dp)
-            .padding(horizontal = 16.dp),
+            .heightIn(min = 44.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SelectionDot(selected = question.selected, onClick = onToggleSelected)
         Spacer(Modifier.width(8.dp))
-        Text("${question.number}", fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.width(32.dp))
-        Text("${question.score}分", fontSize = 13.sp, color = UiTokens.TextSecondary, modifier = Modifier.width(42.dp).clickable {
+        Text("${question.number}", fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, modifier = Modifier.width(32.dp))
+        Text("${question.score}分", fontSize = 13.sp, color = UiTokens.TextSecondary, maxLines = 1, modifier = Modifier.width(40.dp).clickable {
             onScoreChange(question.score + 1)
         })
         Row(
             Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             question.options.forEach { option ->
                 AnswerPill(label = option, selected = question.answer == option, onClick = { onAnswerChange(option) })
@@ -256,10 +265,18 @@ private fun AddQuestionDialog(
     onConfirm: (AddQuestionRequest) -> Unit,
 ) {
     val defaultStart = (template.questions.maxOfOrNull { it.number } ?: 0) + 1
-    var startNumber by remember(visible, defaultStart) { mutableStateOf(defaultStart.toString()) }
-    var count by remember(visible) { mutableStateOf("1") }
-    var score by remember(visible) { mutableStateOf("2") }
-    var optionCount by remember(visible) { mutableStateOf(4) }
+    var startNumber by remember { mutableStateOf(defaultStart.toString()) }
+    var count by remember { mutableStateOf("1") }
+    var score by remember { mutableStateOf("2") }
+    var optionCount by remember { mutableStateOf(4) }
+    LaunchedEffect(visible, defaultStart) {
+        if (visible) {
+            startNumber = defaultStart.toString()
+            count = "1"
+            score = "2"
+            optionCount = 4
+        }
+    }
 
     QuestionFormFrame(
         visible = visible,
@@ -300,13 +317,21 @@ private fun EditQuestionDialog(
     question: QuestionSetting,
     onDismiss: () -> Unit,
     onConfirm: (EditQuestionRequest) -> Unit,
+    visible: Boolean = true,
 ) {
-    var number by remember(question) { mutableStateOf(question.number.toString()) }
-    var score by remember(question) { mutableStateOf(question.score.toString()) }
-    var optionCount by remember(question) { mutableStateOf(question.optionCount.coerceIn(2, 4)) }
+    var number by remember { mutableStateOf(question.number.toString()) }
+    var score by remember { mutableStateOf(question.score.toString()) }
+    var optionCount by remember { mutableStateOf(question.optionCount.coerceIn(2, 4)) }
+    LaunchedEffect(visible, question) {
+        if (visible) {
+            number = question.number.toString()
+            score = question.score.toString()
+            optionCount = question.optionCount.coerceIn(2, 4)
+        }
+    }
 
     QuestionFormFrame(
-        visible = true,
+        visible = visible,
         title = "编辑题目",
         onDismiss = onDismiss,
         errorPrefix = "编辑题目",
@@ -342,8 +367,14 @@ private fun BatchEditDialog(
     onDismiss: () -> Unit,
     onConfirm: (Int, Int) -> Unit,
 ) {
-    var score by remember(visible) { mutableStateOf("2") }
-    var optionCount by remember(visible) { mutableStateOf(4) }
+    var score by remember { mutableStateOf("2") }
+    var optionCount by remember { mutableStateOf(4) }
+    LaunchedEffect(visible) {
+        if (visible) {
+            score = "2"
+            optionCount = 4
+        }
+    }
 
     QuestionFormFrame(
         visible = visible,
@@ -375,8 +406,14 @@ private fun ExamIdDialog(
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit,
 ) {
-    var value by remember(visible, digits) { mutableStateOf(digits.toString()) }
-    var error by remember(visible) { mutableStateOf("") }
+    var value by remember { mutableStateOf(digits.toString()) }
+    var error by remember { mutableStateOf("") }
+    LaunchedEffect(visible, digits) {
+        if (visible) {
+            value = digits.toString()
+            error = ""
+        }
+    }
 
     MiniCenterFrame(visible = visible, onDismiss = onDismiss) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -414,7 +451,10 @@ private fun QuestionFormFrame(
     content: @Composable () -> Unit,
     onConfirm: ((String) -> Unit) -> Unit,
 ) {
-    var errorText by remember(visible, errorPrefix) { mutableStateOf("") }
+    var errorText by remember { mutableStateOf("") }
+    LaunchedEffect(visible, errorPrefix) {
+        if (visible) errorText = ""
+    }
 
     MiniCenterFrame(visible = visible, onDismiss = onDismiss) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -471,7 +511,7 @@ private fun MiniNumberField(label: String, value: String, onValueChange: (String
     OutlinedTextField(
         value = value,
         onValueChange = { next -> onValueChange(next.filter { it.isDigit() }) },
-        label = { Text(label) },
+        label = { Text(label, maxLines = 1) },
         singleLine = true,
         modifier = modifier,
     )
@@ -512,7 +552,7 @@ private fun AnswerPill(label: String, selected: Boolean, onClick: () -> Unit) {
             onClick = onClick,
             shape = RoundedCornerShape(6.dp),
             colors = ButtonDefaults.buttonColors(containerColor = UiTokens.Green, contentColor = Color.White),
-            modifier = Modifier.height(32.dp).width(48.dp),
+            modifier = Modifier.height(32.dp).width(44.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
         ) {
             Text(label, fontSize = 18.sp, fontWeight = FontWeight.Medium)
@@ -521,7 +561,7 @@ private fun AnswerPill(label: String, selected: Boolean, onClick: () -> Unit) {
         OutlinedButton(
             onClick = onClick,
             shape = RoundedCornerShape(6.dp),
-            modifier = Modifier.height(32.dp).width(48.dp),
+            modifier = Modifier.height(32.dp).width(44.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
         ) {
             Text(label, fontSize = 18.sp, fontWeight = FontWeight.Medium)

@@ -1,7 +1,11 @@
 package com.answercard.grader.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +16,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,6 +32,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,10 +42,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import com.answercard.grader.template.StoredTemplate
 import com.answercard.grader.template.TemplateCollection
 import com.answercard.grader.template.TemplateState
@@ -78,6 +87,15 @@ fun AnswerCardApp() {
             screen == Screen.Scan -> openHome()
             screen == Screen.Records -> openHome()
         }
+    }
+
+    val view = LocalView.current
+    LaunchedEffect(screen, view) {
+        val window = view.context.findActivity()?.window ?: return@LaunchedEffect
+        val controller = WindowCompat.getInsetsController(window, view)
+        val lightScreen = screen != Screen.Scan
+        controller.isAppearanceLightStatusBars = lightScreen
+        controller.isAppearanceLightNavigationBars = lightScreen
     }
 
     MaterialTheme {
@@ -233,6 +251,7 @@ private fun HomeScreen(
                         },
                     )
                 }
+                Spacer(Modifier.navigationBarsPadding().height(88.dp))
             }
         }
 
@@ -243,7 +262,8 @@ private fun HomeScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = UiTokens.Green),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = UiTokens.HomeIndicatorHeight + 16.dp)
+                    .navigationBarsPadding()
+                    .padding(end = 16.dp, bottom = 16.dp)
                     .size(56.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
             ) {
@@ -259,32 +279,30 @@ private fun HomeScreen(
                     }
                 },
                 onCopy = { onCopyTemplates(selectedIds.take(10).toSet()) },
-                onDelete = { deleteTargets = selectedIds },
+                onDelete = { if (selectedIds.isNotEmpty()) deleteTargets = selectedIds },
             )
         }
 
-        actionSheetTemplate?.let { stored ->
-            MoreActionSheet(
-                visible = true,
-                onDismiss = { actionSheetTemplate = null },
-                onShare = {
-                    actionSheetTemplate = null
-                    onOpenShare()
-                },
-                onCopy = {
-                    actionSheetTemplate = null
-                    onCopyTemplates(setOf(stored.id))
-                },
-                onRename = {
-                    actionSheetTemplate = null
-                    renameTarget = stored
-                },
-                onDelete = {
-                    actionSheetTemplate = null
-                    deleteTargets = setOf(stored.id)
-                },
-            )
-        }
+        MoreActionSheet(
+            visible = actionSheetTemplate != null,
+            onDismiss = { actionSheetTemplate = null },
+            onShare = {
+                actionSheetTemplate = null
+                onOpenShare()
+            },
+            onCopy = {
+                actionSheetTemplate?.let { onCopyTemplates(setOf(it.id)) }
+                actionSheetTemplate = null
+            },
+            onRename = {
+                renameTarget = actionSheetTemplate
+                actionSheetTemplate = null
+            },
+            onDelete = {
+                actionSheetTemplate?.let { deleteTargets = setOf(it.id) }
+                actionSheetTemplate = null
+            },
+        )
 
         TemplateNameSheet(
             visible = createSheetOpen,
@@ -298,35 +316,34 @@ private fun HomeScreen(
             },
         )
 
-        renameTarget?.let { target ->
-            TemplateNameSheet(
-                visible = true,
-                title = "修改考试名称",
-                initialName = target.template.name,
-                placeholder = "请输入考试名称",
-                onDismiss = { renameTarget = null },
-                onConfirm = { name ->
-                    renameTarget = null
-                    onRenameTemplate(target.id, name)
-                },
-            )
-        }
+        TemplateNameSheet(
+            visible = renameTarget != null,
+            title = "修改考试名称",
+            initialName = renameTarget?.template?.name ?: "",
+            placeholder = "请输入考试名称",
+            onDismiss = { renameTarget = null },
+            onConfirm = { name ->
+                renameTarget?.let { onRenameTemplate(it.id, name) }
+                renameTarget = null
+            },
+        )
 
-        deleteTargets?.let { ids ->
-            MiniConfirmDialog(
-                title = "删除试卷",
-                message = if (ids.size == 1) "确认删除该试卷吗？" else "确认删除已选择的 ${ids.size} 项吗？",
-                confirmText = "删除",
-                destructive = true,
-                onDismiss = { deleteTargets = null },
-                onConfirm = {
-                    onDeleteTemplates(ids)
-                    selectedIds = selectedIds - ids
-                    if (selectedIds.isEmpty()) selectionMode = false
-                    deleteTargets = null
-                },
-            )
-        }
+        var displayedDeleteTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
+        deleteTargets?.let { displayedDeleteTargets = it }
+        MiniConfirmDialog(
+            visible = deleteTargets != null,
+            title = "删除试卷",
+            message = if (displayedDeleteTargets.size <= 1) "确认删除该试卷吗？" else "确认删除已选择的 ${displayedDeleteTargets.size} 项吗？",
+            confirmText = "删除",
+            destructive = true,
+            onDismiss = { deleteTargets = null },
+            onConfirm = {
+                onDeleteTemplates(displayedDeleteTargets)
+                selectedIds = selectedIds - displayedDeleteTargets
+                if (selectedIds.isEmpty()) selectionMode = false
+                deleteTargets = null
+            },
+        )
     }
 }
 
@@ -375,13 +392,13 @@ private fun ExamListRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .heightIn(min = 64.dp)
             .background(Color.White)
             .combinedClickable(
                 onClick = { if (selectionMode) onToggleSelected() else onOpenRecords() },
                 onLongClick = onLongPressIcon,
             )
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (selectionMode) {
@@ -422,7 +439,8 @@ private fun SelectionBox(selected: Boolean) {
         Modifier
             .size(24.dp)
             .clip(RoundedCornerShape(4.dp))
-            .background(if (selected) UiTokens.Red else Color.White),
+            .background(if (selected) UiTokens.Red else Color.White)
+            .border(1.dp, if (selected) UiTokens.Red else UiTokens.Separator, RoundedCornerShape(4.dp)),
         contentAlignment = Alignment.Center,
     ) {
         Text(if (selected) "✓" else "", color = Color.White, fontSize = 16.sp)
@@ -452,9 +470,10 @@ private fun MultiSelectBar(
     Row(
         modifier
             .fillMaxWidth()
-            .height(64.dp + UiTokens.HomeIndicatorHeight)
             .background(Color.White)
-            .padding(bottom = UiTokens.HomeIndicatorHeight),
+            .clickable(enabled = false) {}
+            .navigationBarsPadding()
+            .height(64.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -473,9 +492,9 @@ private fun MoreActionSheet(
     onRename: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    MiniBottomFrame(visible = visible, onDismiss = onDismiss, height = 200.dp) {
+    MiniBottomFrame(visible = visible, onDismiss = onDismiss) {
         Row(
-            Modifier.fillMaxWidth().padding(top = 28.dp),
+            Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 20.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -513,13 +532,16 @@ private fun TemplateNameSheet(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    var name by remember(visible, initialName) { mutableStateOf(initialName) }
+    var name by remember { mutableStateOf(initialName) }
+    LaunchedEffect(visible, initialName) {
+        if (visible) name = initialName
+    }
     MiniBottomFrame(visible = visible, onDismiss = onDismiss, title = title) {
         Column(Modifier.padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                placeholder = { Text(placeholder) },
+                placeholder = { Text(placeholder, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
@@ -537,6 +559,12 @@ private fun TemplateNameSheet(
 
 private fun stablePaperNo(id: String): String =
     id.filter { it.isDigit() }.take(7).padEnd(7, '0').ifBlank { "1730722" }
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
 
 private enum class Screen {
     TemplateList,

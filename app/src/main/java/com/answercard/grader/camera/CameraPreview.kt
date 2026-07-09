@@ -33,7 +33,9 @@ fun CameraPreview(
     val previewView = remember {
         PreviewView(context).apply {
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-            scaleType = PreviewView.ScaleType.FILL_CENTER
+            // FIT_CENTER letterboxes instead of cropping, so the user sees the
+            // full frame that the analyzer receives and can aim truthfully.
+            scaleType = PreviewView.ScaleType.FIT_CENTER
         }
     }
 

@@ -42,12 +42,12 @@ data class ScanDisplayResult(
                 failureReason == null -> null
                 failureReason.contains("corner anchors not found") ||
                     failureReason.contains("invalid card geometry") ->
-                    "No valid answer card found. Aim at the four L anchors."
+                    "未找到有效答题卡，请对准四个 L 形定位点。"
                 failureReason.contains("card too small") ->
-                    "Card too small or too far. Move closer until the four L anchors nearly fill the preview."
+                    "答题卡太小或距离过远，请靠近拍摄，让定位点充满画面。"
                 failureReason.contains("projected cell too small") ->
-                    "Projected cell too small: ${failureReason.substringAfter("projected cell too small: ")}. " +
-                        "Move closer or increase analysis resolution."
+                    "识别单元格过小：${failureReason.substringAfter("projected cell too small: ")}。" +
+                        "请靠近拍摄或提高分析分辨率。"
                 else -> null
             }
     }

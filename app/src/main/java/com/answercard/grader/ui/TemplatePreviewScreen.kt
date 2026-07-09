@@ -7,26 +7,32 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -51,7 +57,12 @@ fun TemplatePreviewScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var scale by remember { mutableFloatStateOf(1f) }
-    val imageBitmap = remember(template) { TemplateRenderer.render(template, scale = 3f).asImageBitmap() }
+    var imageBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(template) {
+        imageBitmap = withContext(Dispatchers.Default) {
+            TemplateRenderer.render(template, scale = 3f).asImageBitmap()
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().background(UiTokens.SecondaryBackground)) {
@@ -61,7 +72,7 @@ fun TemplatePreviewScreen(
                 right = {
                     Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         Text("+", fontSize = 24.sp, color = UiTokens.TextPrimary, modifier = Modifier.clickable {
-                            scale = (scale * 1.2f).coerceAtMost(1.4f)
+                            scale = (scale * 1.2f).coerceAtMost(3f)
                         })
                         Text("-", fontSize = 24.sp, color = UiTokens.TextPrimary, modifier = Modifier.clickable {
                             scale = (scale * 0.8f).coerceAtLeast(0.55f)
@@ -69,30 +80,39 @@ fun TemplatePreviewScreen(
                     }
                 },
             )
-            Box(
+            BoxWithConstraints(
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .background(UiTokens.SecondaryBackground)
-                    .padding(12.dp),
-                contentAlignment = Alignment.TopCenter,
+                    .background(UiTokens.SecondaryBackground),
             ) {
-                Image(
-                    bitmap = imageBitmap,
-                    contentDescription = "答题卡模板预览",
-                    modifier = Modifier
-                        .fillMaxWidth(scale.coerceIn(0.55f, 1.4f))
-                        .background(Color.White)
+                val imageWidth = (this.maxWidth - 24.dp) * scale.coerceIn(0.55f, 3f)
+                Box(
+                    Modifier
+                        .fillMaxSize()
                         .horizontalScroll(rememberScrollState())
-                        .verticalScroll(rememberScrollState()),
-                )
+                        .verticalScroll(rememberScrollState())
+                        .padding(12.dp),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    imageBitmap?.let { bitmap ->
+                        Image(
+                            bitmap = bitmap,
+                            contentDescription = "答题卡模板预览",
+                            modifier = Modifier
+                                .width(imageWidth)
+                                .background(Color.White),
+                        )
+                    }
+                }
             }
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .height(64.dp + UiTokens.HomeIndicatorHeight)
                     .background(Color.White)
-                    .padding(start = 18.dp, end = 18.dp, bottom = UiTokens.HomeIndicatorHeight),
+                    .navigationBarsPadding()
+                    .height(64.dp)
+                    .padding(start = 18.dp, end = 18.dp),
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -116,19 +136,18 @@ fun TemplatePreviewScreen(
             }
         }
 
-        if (editSheetOpen) {
-            TemplateEditSheet(
-                template = template,
-                onTemplateChange = onTemplateChange,
-                onClose = { onEditSheetChange(false) },
-                onPrint = {
-                    onEditSheetChange(false)
-                    scope.launch {
-                        withContext(Dispatchers.IO) { PngExporter.saveTemplatePng(context, template) }
-                    }
-                },
-            )
-        }
+        TemplateEditSheet(
+            visible = editSheetOpen,
+            template = template,
+            onTemplateChange = onTemplateChange,
+            onClose = { onEditSheetChange(false) },
+            onPrint = {
+                onEditSheetChange(false)
+                scope.launch {
+                    withContext(Dispatchers.IO) { PngExporter.saveTemplatePng(context, template) }
+                }
+            },
+        )
     }
 }
 

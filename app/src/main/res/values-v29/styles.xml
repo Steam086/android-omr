@@ -1,0 +1,6 @@
+<resources>
+    <!-- The UI hardcodes an always-light palette; block OEM/AOSP Force Dark from inverting it. -->
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+</resources>
