@@ -80,6 +80,10 @@ object AndroidAdmissionNumberReader {
         debugInfo += solidMarkDebugInfo
 
         val candidates = mutableListOf<AndroidAdmissionNumberCandidate>()
+        var solidOnlyMarks = 0
+        var bubbleOnlyMarks = 0
+        var bothMarks = 0
+        var candidateReadFailures = 0
         layout.admissionNumberMappings.forEach { mapping ->
             val cellResult = cellResolver(mapping)
             val cell = cellResult.cell ?: return failure(cellResult.failureReason ?: "admission cell is missing", debugInfo)
@@ -90,16 +94,17 @@ object AndroidAdmissionNumberReader {
                 edgeCleanDirections = edgeCleanDirections,
             )
             if (readResult.failureReason != null) {
-                return failure(
-                    "bubble read failed: digitIndex=${mapping.digitIndex}, " +
-                        "numberValue=${mapping.numberValue}, reason=${readResult.failureReason}",
-                    debugInfo,
-                )
+                candidateReadFailures += 1
+                debugInfo += "candidateReadFailure=digitIndex=${mapping.digitIndex},numberValue=${mapping.numberValue},reason=${readResult.failureReason}"
             }
 
-            val effectiveReadResult = solidMarkResolver?.let { resolver ->
-                readResult.copy(isMarked = resolver(mapping))
-            } ?: readResult
+            val bubbleReadResult = if (readResult.failureReason == null) readResult else readResult.copy(isMarked = false)
+            val solidMarked = solidMarkResolver?.invoke(mapping) == true
+            val bubbleMarked = bubbleReadResult.isMarked
+            if (solidMarked && bubbleMarked) bothMarks += 1
+            if (solidMarked && !bubbleMarked) solidOnlyMarks += 1
+            if (!solidMarked && bubbleMarked) bubbleOnlyMarks += 1
+            val effectiveReadResult = bubbleReadResult.copy(isMarked = bubbleMarked || solidMarked)
 
             candidates += AndroidAdmissionNumberCandidate(
                 digitIndex = mapping.digitIndex,
@@ -142,6 +147,11 @@ object AndroidAdmissionNumberReader {
 
         debugInfo += "digits=$digits"
         debugInfo += "digitResults=${digitResults.size}"
+        debugInfo += "solidFusion=union"
+        debugInfo += "solidOnlyMarks=$solidOnlyMarks"
+        debugInfo += "bubbleOnlyMarks=$bubbleOnlyMarks"
+        debugInfo += "bothMarks=$bothMarks"
+        debugInfo += "candidateReadFailures=$candidateReadFailures"
         return AndroidAdmissionNumberReadResult(
             digits = digits,
             digitResults = digitResults,

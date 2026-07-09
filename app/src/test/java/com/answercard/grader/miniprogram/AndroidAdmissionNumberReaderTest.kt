@@ -187,6 +187,81 @@ class AndroidAdmissionNumberReaderTest {
     }
 
     @Test
+    fun solidMarksAreUnionedWithBubbleAdmissionMarksInsteadOfReplacingThem() {
+        val fixture = Fixture()
+        fixture.mark(digitIndex = 0, numberValue = 1)
+        fixture.mark(digitIndex = 1, numberValue = 2)
+        fixture.mark(digitIndex = 2, numberValue = 3)
+        fixture.mark(digitIndex = 3, numberValue = 4)
+        val projectedCells = AndroidPaperProjectedCells(
+            questionCells = emptyMap(),
+            admissionNumberCells = fixture.layout.admissionNumberMappings.associate { mapping ->
+                AndroidPaperAdmissionNumberCellKey(mapping.digitIndex, mapping.numberValue) to
+                    fixture.grid.cell(mapping.row, mapping.column)
+            },
+            debugInfo = emptyList(),
+        )
+        val solidMarks = AndroidSolidMarkOverlay(
+            questionCells = emptySet(),
+            admissionNumberCells = setOf(AndroidPaperAdmissionNumberCellKey(digitIndex = 0, numberValue = 7)),
+            debugInfo = listOf("solid=test"),
+        )
+
+        val result = AndroidAdmissionNumberReader.read(
+            frame = fixture.frame(),
+            layout = fixture.layout,
+            projectedCells = projectedCells,
+            solidMarks = solidMarks,
+        )
+
+        assertTrue(result.success)
+        assertTrue(result.digitResults[0].isMultiMarked)
+        assertTrue(result.digitResults[0].candidates.single { it.numberValue == 1 }.readResult.isMarked)
+        assertTrue(result.digitResults[0].candidates.single { it.numberValue == 7 }.readResult.isMarked)
+        assertTrue(result.debugInfo.contains("solidFusion=union"))
+    }
+
+    @Test
+    fun bubbleReadFailureForOneCandidateDoesNotFailAdmissionNumber() {
+        val fixture = Fixture()
+        fixture.mark(digitIndex = 0, numberValue = 1)
+        fixture.mark(digitIndex = 1, numberValue = 2)
+        fixture.mark(digitIndex = 2, numberValue = 3)
+        fixture.mark(digitIndex = 3, numberValue = 4)
+        val admissionCells = fixture.layout.admissionNumberMappings.associate { mapping ->
+            val cell = if (mapping.digitIndex == 0 && mapping.numberValue == 9) {
+                MiniProgramCell(
+                    row = mapping.row,
+                    column = mapping.column,
+                    leftTop = MiniProgramGridPoint(row = 1.0, column = 1.0),
+                    rightTop = MiniProgramGridPoint(row = 1.0, column = 5.0),
+                    leftBottom = MiniProgramGridPoint(row = 5.0, column = 1.0),
+                    rightBottom = MiniProgramGridPoint(row = 5.0, column = 5.0),
+                )
+            } else {
+                fixture.grid.cell(mapping.row, mapping.column)
+            }
+            AndroidPaperAdmissionNumberCellKey(mapping.digitIndex, mapping.numberValue) to cell
+        }
+        val projectedCells = AndroidPaperProjectedCells(
+            questionCells = emptyMap(),
+            admissionNumberCells = admissionCells,
+            debugInfo = emptyList(),
+        )
+
+        val result = AndroidAdmissionNumberReader.read(
+            frame = fixture.frame(),
+            layout = fixture.layout,
+            projectedCells = projectedCells,
+        )
+
+        assertTrue(result.success)
+        assertEquals("1234", result.digits)
+        assertEquals(1, result.digitResults[0].candidates.count { it.readResult.failureReason != null })
+        assertTrue(result.debugInfo.contains("candidateReadFailures=1"))
+    }
+
+    @Test
     fun passesEdgeCleanDirectionsForAdmissionNumberBoundaries() {
         val fixture = Fixture()
 
