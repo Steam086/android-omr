@@ -75,26 +75,40 @@ object AndroidAdmissionNumberReader {
         val debugInfo = mutableListOf<String>()
         debugInfo += "templateType=${layout.templateType}"
         debugInfo += "admissionNumberMappings=${layout.admissionNumberMappings.size}"
-        debugInfo += "edgeCleanDirections=none"
+        debugInfo += "edgeCleanDirections=active"
         debugInfo += debugSource
         debugInfo += solidMarkDebugInfo
 
         val candidates = mutableListOf<AndroidAdmissionNumberCandidate>()
+        val solidMarkedCandidatesByDigit = mutableMapOf<Int, MutableSet<Int>>()
+        var solidOnlyMarks = 0
+        var bubbleOnlyMarks = 0
+        var bothMarks = 0
+        var candidateReadFailures = 0
         layout.admissionNumberMappings.forEach { mapping ->
             val cellResult = cellResolver(mapping)
             val cell = cellResult.cell ?: return failure(cellResult.failureReason ?: "admission cell is missing", debugInfo)
-            val readResult = MiniProgramBubbleReader.read(frame = frame, cell = cell)
+            val edgeCleanDirections = AndroidPaperEdgeCleanDirections.forAdmission(mapping, layout)
+            val readResult = MiniProgramBubbleReader.read(
+                frame = frame,
+                cell = cell,
+                edgeCleanDirections = edgeCleanDirections,
+            )
             if (readResult.failureReason != null) {
-                return failure(
-                    "bubble read failed: digitIndex=${mapping.digitIndex}, " +
-                        "numberValue=${mapping.numberValue}, reason=${readResult.failureReason}",
-                    debugInfo,
-                )
+                candidateReadFailures += 1
+                debugInfo += "candidateReadFailure=digitIndex=${mapping.digitIndex},numberValue=${mapping.numberValue},reason=${readResult.failureReason}"
             }
 
-            val effectiveReadResult = solidMarkResolver?.let { resolver ->
-                readResult.copy(isMarked = resolver(mapping))
-            } ?: readResult
+            val bubbleReadResult = if (readResult.failureReason == null) readResult else readResult.copy(isMarked = false)
+            val solidMarked = solidMarkResolver?.invoke(mapping) == true
+            val bubbleMarked = bubbleReadResult.isMarked
+            if (solidMarked && bubbleMarked) bothMarks += 1
+            if (solidMarked && !bubbleMarked) solidOnlyMarks += 1
+            if (!solidMarked && bubbleMarked) bubbleOnlyMarks += 1
+            if (solidMarked) {
+                solidMarkedCandidatesByDigit.getOrPut(mapping.digitIndex) { mutableSetOf() } += mapping.numberValue
+            }
+            val effectiveReadResult = bubbleReadResult.copy(isMarked = bubbleMarked || solidMarked)
 
             candidates += AndroidAdmissionNumberCandidate(
                 digitIndex = mapping.digitIndex,
@@ -122,7 +136,24 @@ object AndroidAdmissionNumberReader {
                         failureReason = "digit must contain 10 candidates",
                     )
                 } else {
-                    buildDigitResult(digitIndex, sortedCandidates)
+                    val digitResult = buildDigitResult(digitIndex, sortedCandidates)
+                    val preferredSolidCandidate = solidMarkedCandidatesByDigit[digitIndex]
+                        .orEmpty()
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { solidNumbers ->
+                            sortedCandidates
+                                .filter { it.numberValue in solidNumbers }
+                                .maxWithOrNull(
+                                    compareBy<AndroidAdmissionNumberCandidate> { it.readResult.centralBlackCount }
+                                        .thenBy { it.readResult.cleanedTotalBlackCount }
+                                        .thenBy { it.readResult.totalBlackCount },
+                                )
+                        }
+                    if (preferredSolidCandidate != null && digitResult.selectedNumber != preferredSolidCandidate.numberValue) {
+                        digitResult.copy(selectedNumber = preferredSolidCandidate.numberValue)
+                    } else {
+                        digitResult
+                    }
                 }
             }
 
@@ -137,6 +168,11 @@ object AndroidAdmissionNumberReader {
 
         debugInfo += "digits=$digits"
         debugInfo += "digitResults=${digitResults.size}"
+        debugInfo += "solidFusion=union"
+        debugInfo += "solidOnlyMarks=$solidOnlyMarks"
+        debugInfo += "bubbleOnlyMarks=$bubbleOnlyMarks"
+        debugInfo += "bothMarks=$bothMarks"
+        debugInfo += "candidateReadFailures=$candidateReadFailures"
         return AndroidAdmissionNumberReadResult(
             digits = digits,
             digitResults = digitResults,

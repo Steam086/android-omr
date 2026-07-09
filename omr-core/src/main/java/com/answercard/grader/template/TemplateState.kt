@@ -49,6 +49,14 @@ data class TemplateState(
         copy(questions = questions.map {
             if (it.number != question) {
                 it
+            } else if (it.type == QuestionType.MULTIPLE) {
+                val normalizedAnswer = normalizeQuestionAnswer(it.answer, it.options, it.type)
+                val nextAnswer = if (normalizedAnswer.contains(answer)) {
+                    normalizedAnswer.replace(answer, "")
+                } else {
+                    normalizedAnswer + answer
+                }
+                it.copy(answer = normalizeQuestionAnswer(nextAnswer, it.options, it.type))
             } else if (it.answer == answer) {
                 it.copy(answer = "", score = 0)
             } else {
@@ -69,7 +77,7 @@ data class TemplateState(
                 it.copy(
                     optionCount = safeCount,
                     options = labels,
-                    answer = it.answer.takeIf { answer -> answer in labels }.orEmpty(),
+                    answer = normalizeQuestionAnswer(it.answer, labels, it.type),
                 )
             } else {
                 it
@@ -101,7 +109,6 @@ data class TemplateState(
 
         val safeOptionCount = request.optionCount.coerceIn(2, 4)
         val labels = optionLabels(safeOptionCount)
-        val type = if (request.type == QuestionType.MULTIPLE) QuestionType.SINGLE else request.type
         val startNumber = request.startNumber.coerceAtLeast(1)
         val score = request.score.coerceAtLeast(0)
         val added = (0 until count).map { offset ->
@@ -111,7 +118,7 @@ data class TemplateState(
                 score = score,
                 optionCount = safeOptionCount,
                 options = labels,
-                type = type,
+                type = request.type,
             )
         }
 
@@ -121,7 +128,6 @@ data class TemplateState(
     fun editQuestion(originalNumber: Int, request: EditQuestionRequest): TemplateState {
         val safeOptionCount = request.optionCount.coerceIn(2, 4)
         val labels = optionLabels(safeOptionCount)
-        val type = if (request.type == QuestionType.MULTIPLE) QuestionType.SINGLE else request.type
         return copy(
             questions = questions.map { question ->
                 if (question.number == originalNumber) {
@@ -130,8 +136,8 @@ data class TemplateState(
                         score = request.score.coerceAtLeast(0),
                         optionCount = safeOptionCount,
                         options = labels,
-                        answer = question.answer.takeIf { it in labels }.orEmpty(),
-                        type = type,
+                        answer = normalizeQuestionAnswer(question.answer, labels, request.type),
+                        type = request.type,
                     )
                 } else {
                     question
@@ -155,7 +161,11 @@ data class TemplateState(
     fun clearQuestionSelection(): TemplateState =
         copy(questions = questions.map { it.copy(selected = false) })
 
-    fun batchEditSelectedQuestions(score: Int, optionCount: Int): TemplateState {
+    fun batchEditSelectedQuestions(
+        score: Int,
+        optionCount: Int,
+        type: QuestionType = QuestionType.SINGLE,
+    ): TemplateState {
         val safeOptionCount = optionCount.coerceIn(2, 4)
         val labels = optionLabels(safeOptionCount)
         return copy(
@@ -165,8 +175,8 @@ data class TemplateState(
                         score = score.coerceAtLeast(0),
                         optionCount = safeOptionCount,
                         options = labels,
-                        answer = question.answer.takeIf { it in labels }.orEmpty(),
-                        type = QuestionType.SINGLE,
+                        answer = normalizeQuestionAnswer(question.answer, labels, type),
+                        type = type,
                         selected = false,
                     )
                 } else {
@@ -192,3 +202,12 @@ fun optionLabels(optionCount: Int): List<String> =
     } else {
         TemplateGeometry.OPTIONS.take(optionCount.coerceIn(2, 4))
     }
+
+fun normalizeQuestionAnswer(answer: String, labels: List<String>, type: QuestionType): String {
+    val trimmed = answer.trim()
+    return if (type == QuestionType.MULTIPLE) {
+        labels.filter { label -> trimmed.contains(label) }.joinToString(separator = "")
+    } else {
+        labels.firstOrNull { label -> trimmed == label }.orEmpty()
+    }
+}

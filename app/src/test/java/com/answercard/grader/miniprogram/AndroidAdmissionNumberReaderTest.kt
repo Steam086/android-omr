@@ -186,6 +186,95 @@ class AndroidAdmissionNumberReaderTest {
         }
     }
 
+    @Test
+    fun solidMarksAreUnionedWithBubbleAdmissionMarksInsteadOfReplacingThem() {
+        val fixture = Fixture()
+        fixture.mark(digitIndex = 0, numberValue = 1)
+        fixture.mark(digitIndex = 1, numberValue = 2)
+        fixture.mark(digitIndex = 2, numberValue = 3)
+        fixture.mark(digitIndex = 3, numberValue = 4)
+        val projectedCells = AndroidPaperProjectedCells(
+            questionCells = emptyMap(),
+            admissionNumberCells = fixture.layout.admissionNumberMappings.associate { mapping ->
+                AndroidPaperAdmissionNumberCellKey(mapping.digitIndex, mapping.numberValue) to
+                    fixture.grid.cell(mapping.row, mapping.column)
+            },
+            debugInfo = emptyList(),
+        )
+        val solidMarks = AndroidSolidMarkOverlay(
+            questionCells = emptySet(),
+            admissionNumberCells = setOf(AndroidPaperAdmissionNumberCellKey(digitIndex = 0, numberValue = 7)),
+            debugInfo = listOf("solid=test"),
+        )
+
+        val result = AndroidAdmissionNumberReader.read(
+            frame = fixture.frame(),
+            layout = fixture.layout,
+            projectedCells = projectedCells,
+            solidMarks = solidMarks,
+        )
+
+        assertTrue(result.success)
+        assertEquals(7, result.digitResults[0].selectedNumber)
+        assertTrue(result.digitResults[0].isMultiMarked)
+        assertTrue(result.debugInfo.contains("solidFusion=union"))
+    }
+
+    @Test
+    fun bubbleReadFailureForOneCandidateDoesNotFailAdmissionNumber() {
+        val fixture = Fixture()
+        fixture.mark(digitIndex = 0, numberValue = 1)
+        fixture.mark(digitIndex = 1, numberValue = 2)
+        fixture.mark(digitIndex = 2, numberValue = 3)
+        fixture.mark(digitIndex = 3, numberValue = 4)
+        val admissionCells = fixture.layout.admissionNumberMappings.associate { mapping ->
+            val cell = if (mapping.digitIndex == 0 && mapping.numberValue == 9) {
+                MiniProgramCell(
+                    row = mapping.row,
+                    column = mapping.column,
+                    leftTop = MiniProgramGridPoint(row = 1.0, column = 1.0),
+                    rightTop = MiniProgramGridPoint(row = 1.0, column = 5.0),
+                    leftBottom = MiniProgramGridPoint(row = 5.0, column = 1.0),
+                    rightBottom = MiniProgramGridPoint(row = 5.0, column = 5.0),
+                )
+            } else {
+                fixture.grid.cell(mapping.row, mapping.column)
+            }
+            AndroidPaperAdmissionNumberCellKey(mapping.digitIndex, mapping.numberValue) to cell
+        }
+        val projectedCells = AndroidPaperProjectedCells(
+            questionCells = emptyMap(),
+            admissionNumberCells = admissionCells,
+            debugInfo = emptyList(),
+        )
+
+        val result = AndroidAdmissionNumberReader.read(
+            frame = fixture.frame(),
+            layout = fixture.layout,
+            projectedCells = projectedCells,
+        )
+
+        assertTrue(result.success)
+        assertEquals("1234", result.digits)
+        assertEquals(1, result.digitResults[0].candidates.count { it.readResult.failureReason != null })
+        assertFalse(result.digitResults[0].candidates.single { it.numberValue == 9 }.readResult.isMarked)
+        assertTrue(result.debugInfo.contains("candidateReadFailures=1"))
+    }
+
+    @Test
+    fun passesEdgeCleanDirectionsForAdmissionNumberBoundaries() {
+        val fixture = Fixture()
+
+        val result = AndroidAdmissionNumberReader.read(fixture.frame(), fixture.grid, fixture.layout)
+
+        val zero = result.digitResults.first().candidates.single { it.numberValue == 0 }
+        val nine = result.digitResults.first().candidates.single { it.numberValue == 9 }
+        assertTrue(zero.readResult.edgeCleanDirections.contains(MiniProgramEdgeCleanDirection.LEFT))
+        assertTrue(zero.readResult.edgeCleanDirections.contains(MiniProgramEdgeCleanDirection.UP))
+        assertTrue(zero.readResult.edgeCleanDirections.contains(MiniProgramEdgeCleanDirection.DOWN))
+        assertTrue(nine.readResult.edgeCleanDirections.contains(MiniProgramEdgeCleanDirection.RIGHT))
+    }
+
     private class Fixture {
         val layout: AndroidPaperTemplateLayout = AndroidPaperTemplateBuilder.build(List(15) { 4 })
         val grid: MiniProgramGrid

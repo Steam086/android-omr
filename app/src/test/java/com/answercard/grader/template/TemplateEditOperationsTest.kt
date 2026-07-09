@@ -34,6 +34,26 @@ class TemplateEditOperationsTest {
     }
 
     @Test
+    fun editQuestionPreservesMultipleChoiceAndNormalizesAnswer() {
+        val template = TemplateState.default()
+            .withAnswer(3, "A")
+            .editQuestion(
+                originalNumber = 3,
+                request = EditQuestionRequest(
+                    number = 30,
+                    score = 2,
+                    optionCount = 4,
+                    type = QuestionType.MULTIPLE,
+                ),
+            )
+            .toggleAnswer(30, "C")
+
+        val edited = template.questions.single { it.number == 30 }
+        assertEquals(QuestionType.MULTIPLE, edited.type)
+        assertEquals("AC", edited.answer)
+    }
+
+    @Test
     fun toggleQuestionSelectionMarksQuestionsForBatchEdit() {
         val template = TemplateState.default()
             .toggleQuestionSelection(2)
@@ -52,6 +72,18 @@ class TemplateEditOperationsTest {
         val edited = template.questions.filter { it.number in setOf(2, 4) }
         assertEquals(listOf(3, 3), edited.map { it.score })
         assertEquals(listOf("A", "B", "C"), edited.first().options)
+        assertFalse(edited.any { it.selected })
+    }
+
+    @Test
+    fun batchEditSelectedQuestionsCanSetMultipleChoice() {
+        val template = TemplateState.default()
+            .toggleQuestionSelection(2)
+            .toggleQuestionSelection(4)
+            .batchEditSelectedQuestions(score = 3, optionCount = 4, type = QuestionType.MULTIPLE)
+
+        val edited = template.questions.filter { it.number in setOf(2, 4) }
+        assertEquals(listOf(QuestionType.MULTIPLE, QuestionType.MULTIPLE), edited.map { it.type })
         assertFalse(edited.any { it.selected })
     }
 

@@ -33,6 +33,27 @@ class TemplateJsonTest {
     }
 
     @Test
+    fun roundTripsMultipleChoiceAnswer() {
+        val template = TemplateState(
+            name = "多选试卷",
+            questions = listOf(
+                QuestionSetting(
+                    number = 1,
+                    answer = "CA",
+                    score = 4,
+                    type = QuestionType.MULTIPLE,
+                ),
+            ),
+        )
+
+        val restored = TemplateJson.fromJson(TemplateJson.toJson(template))
+        val question = restored.questions.single()
+
+        assertEquals(QuestionType.MULTIPLE, question.type)
+        assertEquals("AC", question.answer)
+    }
+
+    @Test
     fun roundTripPreservesShowHeader() {
         val template = TemplateState.default().withShowHeader(false)
 
