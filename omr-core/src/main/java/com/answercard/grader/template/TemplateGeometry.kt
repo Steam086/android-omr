@@ -14,8 +14,16 @@ data class CornerAnchorReference(
 )
 
 enum class CornerMarkerStyle {
+    CODED,
     SOLID_SQUARE,
     L_BRACKET,
+}
+
+enum class CornerMarkerId {
+    LU,
+    RU,
+    LD,
+    RD,
 }
 
 data class CornerMarkerRects(
@@ -191,6 +199,16 @@ object TemplateGeometry {
             ru = rects.ru.center(),
             rd = rects.rd.center(),
         )
+    }
+
+    fun cornerMarkerRect(layout: CardLayout, id: CornerMarkerId): Rect {
+        val rects = cornerMarkerRects(layout)
+        return when (id) {
+            CornerMarkerId.LU -> rects.lu
+            CornerMarkerId.RU -> rects.ru
+            CornerMarkerId.LD -> rects.ld
+            CornerMarkerId.RD -> rects.rd
+        }
     }
 
     private fun Rect.center(): TemplatePoint = TemplatePoint(x + w / 2f, y + h / 2f)

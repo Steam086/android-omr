@@ -53,6 +53,31 @@ class PerspectiveMappingTest {
     }
 
     @Test
+    fun leastSquaresMappingUsesMoreThanFourCorrespondences() {
+        val source = buildList {
+            for (row in 0..2) for (column in 0..2) add(PerspectivePoint(column.toDouble(), row.toDouble()))
+        }
+        val exact = PerspectiveMapping.fromCorrespondences(
+            unitSquare,
+            listOf(
+                PerspectivePoint(10.0, 20.0),
+                PerspectivePoint(110.0, 24.0),
+                PerspectivePoint(104.0, 130.0),
+                PerspectivePoint(6.0, 118.0),
+            ),
+        )!!
+        val target = source.map(exact::map)
+
+        val fitted = PerspectiveMapping.fromCorrespondences(source, target)!!
+
+        source.zip(target).forEach { (point, expected) ->
+            val actual = fitted.map(point)
+            assertEquals(expected.x, actual.x, 1e-6)
+            assertEquals(expected.y, actual.y, 1e-6)
+        }
+    }
+
+    @Test
     fun perspectiveMappingIsNotAffine() {
         // A true perspective target: parallel source lines must not stay parallel.
         val target = listOf(
@@ -84,7 +109,7 @@ class PerspectiveMappingTest {
     }
 
     @Test(expected = IllegalArgumentException::class)
-    fun requiresFourPoints() {
+    fun requiresAtLeastFourPoints() {
         PerspectiveMapping.fromCorrespondences(unitSquare.take(3), unitSquare.take(3))
     }
 }

@@ -222,7 +222,7 @@ object AndroidSolidMarkDetector {
         cardLayout: CardLayout,
         anchors: MiniProgramAnchors,
     ): List<Pair<String, CornerAnchorReferencePoints>> {
-        if (AnchorReferenceResolver.isSolidMarker(anchors)) {
+        if (AnchorReferenceResolver.usesMarkerCenters(anchors)) {
             val centers = TemplateGeometry.cornerMarkerCenters(cardLayout)
             return listOf(
                 "markerCenters" to CornerAnchorReferencePoints(

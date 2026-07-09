@@ -5,12 +5,12 @@ import com.answercard.grader.template.CornerAnchorReference
 import com.answercard.grader.template.TemplateGeometry
 
 object AnchorReferenceResolver {
-    fun isSolidMarker(anchors: MiniProgramAnchors): Boolean =
+    fun usesMarkerCenters(anchors: MiniProgramAnchors): Boolean =
         listOf(anchors.lu, anchors.ld, anchors.ru, anchors.rd)
-            .all { it.source == SolidCornerMarkerDetector.SOURCE }
+            .all { it.source == SolidCornerMarkerDetector.SOURCE || it.source == CodedCornerMarkerDetector.SOURCE }
 
     fun projectionReference(cardLayout: CardLayout, anchors: MiniProgramAnchors): CornerAnchorReference =
-        if (isSolidMarker(anchors)) {
+        if (usesMarkerCenters(anchors)) {
             TemplateGeometry.cornerMarkerCenters(cardLayout)
         } else {
             TemplateGeometry.cornerAnchorReference(cardLayout)

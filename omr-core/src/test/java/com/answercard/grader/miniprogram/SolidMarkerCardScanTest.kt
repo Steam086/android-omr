@@ -87,7 +87,7 @@ class SolidMarkerCardScanTest {
         val result = AndroidOmrEngine.scan(warped, template)
 
         assertTrue(result.debugInfo.joinToString(), result.success)
-        assertTrue(result.debugInfo.contains("anchorPath=solid-marker"))
+        assertTrue(result.debugInfo.contains("anchorPath=coded-marker"))
         assertEquals(listOf("A"), result.answerArea?.questions?.single { it.questionIndex == 0 }?.selectedLabels)
         assertEquals(2.0, result.score?.totalScore ?: -1.0, 0.0)
     }

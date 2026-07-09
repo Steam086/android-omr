@@ -25,11 +25,19 @@ object AndroidOmrEngine {
         val debugInfo = mutableListOf<String>()
         debugInfo += layoutResult.debugInfo
 
-        val solidAnchors = SolidCornerMarkerDetector.findAnchors(
-            frame = frame,
-            expectedAspectRatio = expectedRenderedAspectRatio(template),
-        )
-        val cornerMatch = if (solidAnchors == null) {
+        val cardLayout = TemplateGeometry.buildLayout(template)
+        val codedMatch = CodedCornerMarkerDetector.findAnchorsWithDiagnostics(frame, cardLayout)
+        val codedAnchors = codedMatch.anchors
+        val hasPartialCodedMarkers = codedAnchors == null && codedMatch.diagnostics.detectedIds.isNotEmpty()
+        val solidAnchors = if (codedAnchors == null && !hasPartialCodedMarkers) {
+            SolidCornerMarkerDetector.findAnchors(
+                frame = frame,
+                expectedAspectRatio = expectedRenderedAspectRatio(template),
+            )
+        } else {
+            null
+        }
+        val cornerMatch = if (codedAnchors == null && solidAnchors == null && !hasPartialCodedMarkers) {
             CornerAnchorMatcher.findAnchorsWithDiagnostics(
                 frame = frame,
                 expectedAspectRatio = expectedRenderedAspectRatio(template),
@@ -37,9 +45,15 @@ object AndroidOmrEngine {
         } else {
             null
         }
-        val anchorPath = if (solidAnchors != null) "anchorPath=solid-marker" else "anchorPath=l-bracket"
-        val cornerDebugInfo = cornerMatch?.diagnostics?.debugInfo().orEmpty() + anchorPath
-        val anchors = solidAnchors ?: cornerMatch?.anchors
+        val anchorPath = when {
+            codedAnchors != null -> "anchorPath=coded-marker"
+            hasPartialCodedMarkers -> "anchorPath=coded-marker-partial"
+            solidAnchors != null -> "anchorPath=solid-marker"
+            else -> "anchorPath=l-bracket"
+        }
+        val cornerDebugInfo = codedMatch.diagnostics.debugInfo() +
+            cornerMatch?.diagnostics?.debugInfo().orEmpty() + anchorPath
+        val anchors = codedAnchors ?: solidAnchors ?: cornerMatch?.anchors
             ?: return AndroidOmrResult(
                 success = false,
                 failureReason = "corner anchors not found",

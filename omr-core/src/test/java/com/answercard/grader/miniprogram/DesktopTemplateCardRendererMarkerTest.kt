@@ -1,5 +1,7 @@
 package com.answercard.grader.miniprogram
 
+import com.answercard.grader.template.CodedCornerMarker
+import com.answercard.grader.template.CornerMarkerId
 import com.answercard.grader.template.CornerMarkerStyle
 import com.answercard.grader.template.TemplateGeometry
 import com.answercard.grader.template.TemplateState
@@ -33,12 +35,28 @@ class DesktopTemplateCardRendererMarkerTest {
     }
 
     @Test
-    fun defaultModeDrawsSolidSquares() {
+    fun defaultModeDrawsCodedMarkers() {
         val renderer = DesktopTemplateCardRenderer(template = TemplateState.default(), scale = 3f)
         val frame = renderer.frame()
+        val layout = TemplateGeometry.buildLayout(TemplateState.default())
         val scale = 3f
+        CornerMarkerId.entries.forEach { id ->
+            val rect = TemplateGeometry.cornerMarkerRect(layout, id)
+            val module = rect.w / CodedCornerMarker.GRID_SIZE
+            for (row in 0 until CodedCornerMarker.GRID_SIZE) {
+                for (column in 0 until CodedCornerMarker.GRID_SIZE) {
+                    val sampleRow = ((rect.y + (row + 0.5f) * module) * scale).toInt()
+                    val sampleColumn = ((rect.x + (column + 0.5f) * module) * scale).toInt()
+                    val expectedDark = CodedCornerMarker.isDark(id, row, column)
+                    assertTrue(
+                        "$id cell $row,$column",
+                        if (expectedDark) frame[sampleRow, sampleColumn] < 100 else frame[sampleRow, sampleColumn] > 200,
+                    )
+                }
+            }
+        }
         val armRow = ((TemplateGeometry.CORNER_BRACKET_MARGIN + 4f) * scale).toInt()
         val armColumn = ((TemplateGeometry.CORNER_BRACKET_MARGIN + 30f) * scale).toInt()
-        assertTrue("bracket arm area should be white by default", frame[armRow, armColumn] > 200)
+        assertTrue("old bracket arm area should remain white", frame[armRow, armColumn] > 200)
     }
 }

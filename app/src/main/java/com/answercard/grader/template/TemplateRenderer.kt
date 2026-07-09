@@ -43,7 +43,7 @@ object TemplateRenderer {
             typeface = Typeface.DEFAULT_BOLD
         }
 
-        drawCornerMarkers(canvas, layout, fill)
+        drawCodedCornerMarkers(canvas, layout, fill)
         canvas.save()
         canvas.translate(TemplateGeometry.PAGE_MARGIN, TemplateGeometry.PAGE_MARGIN)
         if (layout.showHeader) {
@@ -68,10 +68,27 @@ object TemplateRenderer {
     fun renderPng(template: TemplateState, scale: Float = 3f): ByteArray =
         renderPng(TemplateGeometry.buildLayout(template), scale)
 
-    private fun drawCornerMarkers(canvas: Canvas, layout: CardLayout, paint: Paint) {
-        val rects = TemplateGeometry.cornerMarkerRects(layout)
-        listOf(rects.lu, rects.ru, rects.ld, rects.rd).forEach { rect ->
-            canvas.drawRect(rect.x, rect.y, rect.x + rect.w, rect.y + rect.h, paint)
+    private fun drawCodedCornerMarkers(canvas: Canvas, layout: CardLayout, black: Paint) {
+        val white = Paint(black).apply { color = Color.WHITE }
+        CornerMarkerId.entries.forEach { id ->
+            val rect = TemplateGeometry.cornerMarkerRect(layout, id)
+            val module = rect.w / CodedCornerMarker.GRID_SIZE
+            canvas.drawRect(rect.x, rect.y, rect.x + rect.w, rect.y + rect.h, black)
+            canvas.drawRect(
+                rect.x + module,
+                rect.y + module,
+                rect.x + rect.w - module,
+                rect.y + rect.h - module,
+                white,
+            )
+            for (row in 0 until CodedCornerMarker.PAYLOAD_SIZE) {
+                for (column in 0 until CodedCornerMarker.PAYLOAD_SIZE) {
+                    if (!CodedCornerMarker.payloadBit(CodedCornerMarker.payload(id), row, column)) continue
+                    val left = rect.x + (column + 1) * module
+                    val top = rect.y + (row + 1) * module
+                    canvas.drawRect(left, top, left + module, top + module, black)
+                }
+            }
         }
     }
 

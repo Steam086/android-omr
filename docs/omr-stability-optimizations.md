@@ -1,5 +1,7 @@
 # 相机扫描稳定性优化：方块角标 + 透视映射 + 多帧共识 + 防抖门
 
+> 2026-07-09 后续：新生成模板已进一步升级为四个唯一编码角标；本文件保留实心方块阶段的背景、基线和兼容策略。当前方案见 `docs/superpowers/plans/2026-07-09-coded-fiducial-template.md`。
+
 ## 背景与问题定位
 
 手机实拍答题卡时分数在帧间波动。桌面扰动实验（`DesktopCameraInstabilityProbeTest`）复现并定位了四个叠加原因：

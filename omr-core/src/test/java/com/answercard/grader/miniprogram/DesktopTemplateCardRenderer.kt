@@ -1,6 +1,8 @@
 package com.answercard.grader.miniprogram
 
 import com.answercard.grader.template.CardLayout
+import com.answercard.grader.template.CodedCornerMarker
+import com.answercard.grader.template.CornerMarkerId
 import com.answercard.grader.template.CornerMarkerStyle
 import com.answercard.grader.template.Rect
 import com.answercard.grader.template.TemplateGeometry
@@ -21,7 +23,7 @@ import kotlin.math.roundToInt
 class DesktopTemplateCardRenderer(
     template: TemplateState,
     private val scale: Float = 3f,
-    private val markerStyle: CornerMarkerStyle = CornerMarkerStyle.SOLID_SQUARE,
+    private val markerStyle: CornerMarkerStyle = CornerMarkerStyle.CODED,
 ) {
     private val layout: CardLayout = TemplateGeometry.buildLayout(template)
     private val image: BufferedImage = BufferedImage(
@@ -36,6 +38,7 @@ class DesktopTemplateCardRenderer(
             graphics.fill(Rectangle2D.Float(0f, 0f, TemplateGeometry.renderedWidth(layout), TemplateGeometry.renderedHeight(layout)))
             graphics.color = Color.BLACK
             when (markerStyle) {
+                CornerMarkerStyle.CODED -> drawCodedCornerMarkers(graphics)
                 CornerMarkerStyle.SOLID_SQUARE -> drawCornerMarkers(graphics)
                 CornerMarkerStyle.L_BRACKET -> drawCornerBrackets(graphics)
             }
@@ -61,6 +64,14 @@ class DesktopTemplateCardRenderer(
                     ),
                 )
             }
+        }
+    }
+
+    fun eraseCornerMarker(id: CornerMarkerId) {
+        val rect = TemplateGeometry.cornerMarkerRect(layout, id)
+        withGraphics { graphics ->
+            graphics.color = Color.WHITE
+            graphics.fill(Rectangle2D.Float(rect.x, rect.y, rect.w, rect.h))
         }
     }
 
@@ -130,6 +141,38 @@ class DesktopTemplateCardRenderer(
         val rects = TemplateGeometry.cornerMarkerRects(layout)
         listOf(rects.lu, rects.ru, rects.ld, rects.rd).forEach { rect ->
             graphics.fill(Rectangle2D.Float(rect.x, rect.y, rect.w, rect.h))
+        }
+    }
+
+    private fun drawCodedCornerMarkers(graphics: Graphics2D) {
+        CornerMarkerId.entries.forEach { id ->
+            val rect = TemplateGeometry.cornerMarkerRect(layout, id)
+            val module = rect.w / CodedCornerMarker.GRID_SIZE
+            graphics.color = Color.BLACK
+            graphics.fill(Rectangle2D.Float(rect.x, rect.y, rect.w, rect.h))
+            graphics.color = Color.WHITE
+            graphics.fill(
+                Rectangle2D.Float(
+                    rect.x + module,
+                    rect.y + module,
+                    rect.w - module * 2f,
+                    rect.h - module * 2f,
+                ),
+            )
+            graphics.color = Color.BLACK
+            for (row in 0 until CodedCornerMarker.PAYLOAD_SIZE) {
+                for (column in 0 until CodedCornerMarker.PAYLOAD_SIZE) {
+                    if (!CodedCornerMarker.payloadBit(CodedCornerMarker.payload(id), row, column)) continue
+                    graphics.fill(
+                        Rectangle2D.Float(
+                            rect.x + (column + 1) * module,
+                            rect.y + (row + 1) * module,
+                            module,
+                            module,
+                        ),
+                    )
+                }
+            }
         }
     }
 

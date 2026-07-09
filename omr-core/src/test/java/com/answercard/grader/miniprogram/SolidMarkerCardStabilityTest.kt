@@ -18,6 +18,15 @@ import org.junit.Test
 class SolidMarkerCardStabilityTest {
     @Test
     fun noisyBlurredFramesAgreeOnTheCorrectScore() {
+        assertNoisyFramesStayStable(CornerMarkerStyle.SOLID_SQUARE, "anchorPath=solid-marker")
+    }
+
+    @Test
+    fun codedMarkersStayDecodableInNoisyBlurredFrames() {
+        assertNoisyFramesStayStable(CornerMarkerStyle.CODED, "anchorPath=coded-marker")
+    }
+
+    private fun assertNoisyFramesStayStable(markerStyle: CornerMarkerStyle, expectedAnchorPath: String) {
         val template = TemplateState(
             name = "stability",
             questions = (1..16).map { number ->
@@ -32,7 +41,7 @@ class SolidMarkerCardStabilityTest {
                 QuestionSetting(number = number, answer = answer, score = if (number in listOf(1, 2, 6, 11, 16)) 2 else 0)
             },
         )
-        val renderer = DesktopTemplateCardRenderer(template, scale = 3f, markerStyle = CornerMarkerStyle.SOLID_SQUARE)
+        val renderer = DesktopTemplateCardRenderer(template, scale = 3f, markerStyle = markerStyle)
         renderer.markAnswer(1, "A")
         renderer.markAnswer(2, "B")
         renderer.markAnswer(6, "C")
@@ -47,6 +56,7 @@ class SolidMarkerCardStabilityTest {
             val result = AndroidOmrEngine.scan(frame, template)
             if (!result.success) continue
             successes += 1
+            assertTrue("seed $seed path", result.debugInfo.contains(expectedAnchorPath))
             assertEquals("seed $seed admission", "1234", result.admissionNumber?.digits)
             assertEquals("seed $seed score", 10.0, result.score?.totalScore ?: -1.0, 0.0)
         }

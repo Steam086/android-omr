@@ -1,5 +1,6 @@
 package com.answercard.grader.template
 
+import android.graphics.Color
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -23,6 +24,26 @@ class TemplateRendererTest {
         val png = TemplateRenderer.renderPng(TemplateGeometry.buildLayout(), scale = 1f)
 
         assertArrayEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47), png.take(4).toByteArray())
+    }
+
+    @Test
+    fun renderDrawsFourCodedCornerMarkers() {
+        val layout = TemplateGeometry.buildLayout()
+        val scale = 3f
+        val bitmap = TemplateRenderer.render(layout, scale)
+
+        CornerMarkerId.entries.forEach { id ->
+            val rect = TemplateGeometry.cornerMarkerRect(layout, id)
+            val module = rect.w / CodedCornerMarker.GRID_SIZE
+            for (row in 0 until CodedCornerMarker.GRID_SIZE) {
+                for (column in 0 until CodedCornerMarker.GRID_SIZE) {
+                    val x = ((rect.x + (column + 0.5f) * module) * scale).toInt()
+                    val y = ((rect.y + (row + 0.5f) * module) * scale).toInt()
+                    val expected = if (CodedCornerMarker.isDark(id, row, column)) Color.BLACK else Color.WHITE
+                    assertEquals("$id cell $row,$column", expected, bitmap.getPixel(x, y))
+                }
+            }
+        }
     }
 
     @Test(expected = IllegalArgumentException::class)
