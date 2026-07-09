@@ -14,6 +14,7 @@ captures/
 # Local config
 local.properties
 答题卡助手_解包/
+.worktrees/
 
 # APK / generated artifacts
 *.apk
