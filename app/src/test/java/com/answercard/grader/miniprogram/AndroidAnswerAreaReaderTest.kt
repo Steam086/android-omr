@@ -116,6 +116,44 @@ class AndroidAnswerAreaReaderTest {
     }
 
     @Test
+    fun downgradesSingleOptionBubbleReadFailuresWithoutFailingTheQuestion() {
+        val fixture = Fixture(questionCount = 1)
+        fixture.mark(questionIndex = 0, optionIndex = 0)
+        val failedCellKey = AndroidPaperQuestionCellKey(questionIndex = 0, optionIndex = 1)
+        val projectedCells = AndroidPaperProjectedCells(
+            questionCells = fixture.layout.questionMappings.associate { mapping ->
+                val key = AndroidPaperQuestionCellKey(mapping.questionIndex, mapping.optionIndex)
+                key to if (key == failedCellKey) {
+                    MiniProgramCell(
+                        row = 10,
+                        column = 10,
+                        leftTop = MiniProgramGridPoint(row = 10.0, column = 10.0),
+                        rightTop = MiniProgramGridPoint(row = 10.0, column = 14.0),
+                        leftBottom = MiniProgramGridPoint(row = 14.0, column = 10.0),
+                        rightBottom = MiniProgramGridPoint(row = 14.0, column = 14.0),
+                    )
+                } else {
+                    fixture.grid.cell(mapping.row, mapping.column)
+                }
+            },
+            admissionNumberCells = emptyMap(),
+            debugInfo = emptyList(),
+        )
+
+        val result = AndroidAnswerAreaReader.read(
+            frame = fixture.frame(),
+            layout = fixture.layout,
+            projectedCells = projectedCells,
+        )
+
+        assertNull(result.failureReason)
+        assertQuestion(result, questionIndex = 0, selectedOptions = listOf(0), selectedLabels = listOf("A"))
+        val failedOption = result.questions.single().optionResults.single { it.optionIndex == 1 }
+        assertNotNull(failedOption.readResult.failureReason)
+        assertTrue(result.debugInfo.contains("optionReadFailures=1"))
+    }
+
+    @Test
     fun singleChoiceStillSelectsStrongestMarkedOptionAndRecordsAmbiguity() {
         val fixture = Fixture(questionCount = 1)
         fixture.mark(questionIndex = 0, optionIndex = 0, markSize = 9)
