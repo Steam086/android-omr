@@ -139,6 +139,36 @@ class AndroidOmrEngineTest {
     }
 
     @Test
+    fun scansMultipleChoiceQuestionWithFullScore() {
+        val template = TemplateState(
+            name = "multi",
+            questions = listOf(
+                QuestionSetting(
+                    number = 1,
+                    answer = "AC",
+                    score = 4,
+                    type = QuestionType.MULTIPLE,
+                    partialScore = 1,
+                ),
+            ),
+        )
+        val synthetic = AndroidOmrSyntheticFrameFactory(template)
+        synthetic.markAdmissionNumber("1234")
+        synthetic.markAnswer(questionIndex = 0, optionIndex = 0)
+        synthetic.markAnswer(questionIndex = 0, optionIndex = 2)
+
+        val result = AndroidOmrEngine.scanWithPrecomputedGridForTest(
+            frame = synthetic.frame(),
+            template = template,
+            grid = synthetic.grid,
+        )
+
+        assertTrue(result.failureReason ?: result.debugInfo.joinToString(), result.success)
+        assertEquals(listOf("A", "C"), result.answerArea?.questions?.single()?.selectedLabels)
+        assertEquals(4.0, result.score?.totalScore ?: -1.0, 0.0)
+    }
+
+    @Test
     fun toleratesMultiMarkedQuestionBySelectingDarkest() {
         val template = templateForSuccessfulPath()
         val synthetic = AndroidOmrSyntheticFrameFactory(template)
