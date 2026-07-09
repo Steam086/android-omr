@@ -59,6 +59,30 @@ fun main(args: Array<String>) {
     if (options.debug) {
         println("Debug:")
         result.debugInfo.forEach { println("  $it") }
+        result.answerArea?.debugInfo.orEmpty().forEach { println("  answer.$it") }
+        result.answerArea?.questions.orEmpty().forEach { question ->
+            question.optionResults.forEach { option ->
+                val read = option.readResult
+                println(
+                    "  answer.Q${question.questionIndex + 1}${option.optionLabel}=" +
+                        "marked:${read.isMarked},contain:${read.containCount},central:${read.centralBlackCount}," +
+                        "mean:${"%.1f".format(java.util.Locale.US, read.centralMeanGray)}," +
+                        "threshold:${read.blackThreshold},sample:${read.sampleColumns}x${read.sampleRows}",
+                )
+            }
+        }
+        result.admissionNumber?.debugInfo.orEmpty().forEach { println("  admission.$it") }
+        result.admissionNumber?.digitResults.orEmpty().forEach { digit ->
+            digit.candidates.forEach { candidate ->
+                val read = candidate.readResult
+                println(
+                    "  admission.D${digit.digitIndex}:${candidate.numberValue}=" +
+                        "marked:${read.isMarked},contain:${read.containCount},central:${read.centralBlackCount}," +
+                        "mean:${"%.1f".format(java.util.Locale.US, read.centralMeanGray)}," +
+                        "threshold:${read.blackThreshold},sample:${read.sampleColumns}x${read.sampleRows}",
+                )
+            }
+        }
     }
 
     if (!result.success) exitProcess(2)

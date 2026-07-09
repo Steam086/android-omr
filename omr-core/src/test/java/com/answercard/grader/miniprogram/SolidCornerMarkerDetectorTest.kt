@@ -23,8 +23,8 @@ class SolidCornerMarkerDetectorTest {
 
         val anchors = SolidCornerMarkerDetector.findAnchors(
             frame = frame,
-            expectedAspectRatio = TemplateGeometry.renderedWidth(layout).toDouble() /
-                TemplateGeometry.renderedHeight(layout).toDouble(),
+            expectedAspectRatio = (centers.ru.x - centers.lu.x).toDouble() /
+                (centers.ld.y - centers.lu.y).toDouble(),
         )
 
         assertNotNull(anchors)

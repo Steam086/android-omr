@@ -8,6 +8,7 @@ import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class DesktopWechatImageScanTest {
@@ -48,6 +49,26 @@ class DesktopWechatImageScanTest {
         assertEquals(10.0, result.score?.totalScore ?: -1.0, 0.0)
     }
 
+    @Test
+    fun scanAllSolidMarkerPhotos() {
+        val files = solidMarkerFiles()
+        assumeTrue("server solid-marker photos should be available for desktop regression", files.all { it.isFile })
+
+        files.forEach { file ->
+            assertSolidMarkerScan(file, loadImageAsFrame(file))
+        }
+    }
+
+    @Test
+    fun scanAllSolidMarkerPhotosAtAnalysisResolution() {
+        val files = solidMarkerFiles()
+        assumeTrue("server solid-marker photos should be available for desktop regression", files.all { it.isFile })
+
+        files.forEach { file ->
+            assertSolidMarkerScan(file, downscaleToWidth(loadImageAsFrame(file), 1280))
+        }
+    }
+
     private fun sampleTemplate(): TemplateState =
         TemplateState(
             name = "desktop wechat regression",
@@ -64,6 +85,37 @@ class DesktopWechatImageScanTest {
                 QuestionSetting(number = number, answer = answer, score = score)
             },
         )
+
+    private fun solidMarkerTemplate(): TemplateState =
+        TemplateState(
+            name = "desktop solid marker regression",
+            questions = (1..16).map { number ->
+                QuestionSetting(
+                    number = number,
+                    answer = "A",
+                    score = if (number in listOf(1, 7, 15)) 2 else 0,
+                )
+            },
+        )
+
+    private fun assertSolidMarkerScan(file: File, frame: MiniProgramFrame) {
+        val result = AndroidOmrEngine.scan(frame = frame, template = solidMarkerTemplate())
+
+        assertTrue("${file.name}: ${result.failureReason ?: result.debugInfo.joinToString()}", result.success)
+        assertEquals("${file.name}: admission", "1233", result.admissionNumber?.digits)
+        assertTrue("${file.name}: marker path", result.debugInfo.contains("anchorPath=solid-marker"))
+        result.answerArea!!.questions.forEach { question ->
+            val expected = if (question.questionIndex in listOf(0, 6, 14)) listOf("A") else emptyList()
+            assertEquals("${file.name}: Q${question.questionIndex + 1}", expected, question.selectedLabels)
+        }
+    }
+
+    private fun solidMarkerFiles(): List<File> = listOf(
+        "微信图片_20260709175934_784_10.jpg",
+        "微信图片_20260709175936_785_10.jpg",
+        "微信图片_20260709175937_786_10.jpg",
+        "微信图片_20260709175939_787_10.jpg",
+    ).map(::findRootFile)
 
     private fun loadImageAsFrame(file: File): MiniProgramFrame {
         val image = ImageIO.read(file)
@@ -107,8 +159,8 @@ class DesktopWechatImageScanTest {
     private fun findRootFile(fileName: String): File {
         var directory: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
         while (directory != null) {
-            val candidate = File(directory, fileName)
-            if (candidate.isFile) return candidate
+            val candidates = listOf(File(directory, "images/$fileName"), File(directory, fileName))
+            candidates.firstOrNull { it.isFile }?.let { return it }
             directory = directory.parentFile
         }
         return File(fileName)

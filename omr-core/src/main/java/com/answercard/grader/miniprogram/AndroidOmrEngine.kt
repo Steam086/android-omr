@@ -7,7 +7,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 object AndroidOmrEngine {
-    private const val MIN_PROJECTED_CELL_SIZE = 16
+    private const val MIN_PROJECTED_CELL_SIZE = 14
     private const val MIN_CARD_WIDTH = 160.0
     private const val MIN_CARD_HEIGHT = 120.0
     private const val MIN_CARD_AREA = 18_000.0
@@ -28,15 +28,16 @@ object AndroidOmrEngine {
         val cardLayout = TemplateGeometry.buildLayout(template)
         val codedMatch = CodedCornerMarkerDetector.findAnchorsWithDiagnostics(frame, cardLayout)
         val codedAnchors = codedMatch.anchors
-        val hasPartialCodedMarkers = codedAnchors == null && codedMatch.diagnostics.detectedIds.isNotEmpty()
-        val solidAnchors = if (codedAnchors == null && !hasPartialCodedMarkers) {
-            SolidCornerMarkerDetector.findAnchors(
+        val hasPartialCodedMarkers = codedAnchors == null && codedMatch.diagnostics.detectedIds.size >= 2
+        val solidMatch = if (codedAnchors == null && !hasPartialCodedMarkers) {
+            SolidCornerMarkerDetector.findAnchorsWithDiagnostics(
                 frame = frame,
-                expectedAspectRatio = expectedRenderedAspectRatio(template),
+                expectedAspectRatio = expectedMarkerCenterAspectRatio(template),
             )
         } else {
             null
         }
+        val solidAnchors = solidMatch?.anchors
         val cornerMatch = if (codedAnchors == null && solidAnchors == null && !hasPartialCodedMarkers) {
             CornerAnchorMatcher.findAnchorsWithDiagnostics(
                 frame = frame,
@@ -51,7 +52,7 @@ object AndroidOmrEngine {
             solidAnchors != null -> "anchorPath=solid-marker"
             else -> "anchorPath=l-bracket"
         }
-        val cornerDebugInfo = codedMatch.diagnostics.debugInfo() +
+        val cornerDebugInfo = codedMatch.diagnostics.debugInfo() + solidMatch?.diagnostics?.debugInfo().orEmpty() +
             cornerMatch?.diagnostics?.debugInfo().orEmpty() + anchorPath
         val anchors = codedAnchors ?: solidAnchors ?: cornerMatch?.anchors
             ?: return AndroidOmrResult(
@@ -288,6 +289,12 @@ object AndroidOmrEngine {
         val cardLayout = TemplateGeometry.buildLayout(template)
         return TemplateGeometry.renderedWidth(cardLayout).toDouble() /
             TemplateGeometry.renderedHeight(cardLayout).toDouble()
+    }
+
+    private fun expectedMarkerCenterAspectRatio(template: TemplateState): Double {
+        val centers = TemplateGeometry.cornerMarkerCenters(TemplateGeometry.buildLayout(template))
+        return (centers.ru.x - centers.lu.x).toDouble() /
+            (centers.ld.y - centers.lu.y).toDouble().coerceAtLeast(1.0)
     }
 
     private data class LayoutBuildResult(

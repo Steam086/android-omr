@@ -3,6 +3,8 @@ package com.answercard.grader.miniprogram
 object AndroidAdmissionNumberReader {
     private const val DIGIT_VALUES = 10
     private const val BLANK_PLACEHOLDER = '?'
+    private const val ABSOLUTE_DARK_MEAN_THRESHOLD = 80.0
+    private const val MIN_PEER_GRAY_CONTRAST = 18.0
 
     fun read(
         frame: MiniProgramFrame,
@@ -136,17 +138,18 @@ object AndroidAdmissionNumberReader {
                         failureReason = "digit must contain 10 candidates",
                     )
                 } else {
-                    val digitResult = buildDigitResult(digitIndex, sortedCandidates)
-                    val preferredSolidCandidate = solidMarkedCandidatesByDigit[digitIndex]
-                        .orEmpty()
+                    val solidNumbers = solidMarkedCandidatesByDigit[digitIndex].orEmpty()
+                    val digitResult = buildDigitResult(digitIndex, sortedCandidates, solidNumbers)
+                    val preferredSolidCandidate = solidNumbers
                         .takeIf { it.isNotEmpty() }
                         ?.let { solidNumbers ->
                             sortedCandidates
                                 .filter { it.numberValue in solidNumbers }
-                                .maxWithOrNull(
-                                    compareBy<AndroidAdmissionNumberCandidate> { it.readResult.centralBlackCount }
-                                        .thenBy { it.readResult.cleanedTotalBlackCount }
-                                        .thenBy { it.readResult.totalBlackCount },
+                                .minWithOrNull(
+                                    compareBy<AndroidAdmissionNumberCandidate> { it.readResult.centralMeanGray }
+                                        .thenByDescending { it.readResult.centralBlackCount }
+                                        .thenByDescending { it.readResult.cleanedTotalBlackCount }
+                                        .thenByDescending { it.readResult.totalBlackCount },
                                 )
                         }
                     if (preferredSolidCandidate != null && digitResult.selectedNumber != preferredSolidCandidate.numberValue) {
@@ -185,12 +188,20 @@ object AndroidAdmissionNumberReader {
     private fun buildDigitResult(
         digitIndex: Int,
         candidates: List<AndroidAdmissionNumberCandidate>,
+        solidNumbers: Set<Int>,
     ): AndroidAdmissionDigitReadResult {
-        val marked = candidates.filter { it.readResult.isMarked }
-        val selected = marked.maxWithOrNull(
-            compareBy<AndroidAdmissionNumberCandidate> { it.readResult.centralBlackCount }
-                .thenBy { it.readResult.cleanedTotalBlackCount }
-                .thenBy { it.readResult.totalBlackCount },
+        val medianGray = candidates.map { it.readResult.centralMeanGray }.sorted()[candidates.size / 2]
+        val marked = candidates.filter { candidate ->
+            candidate.readResult.isMarked &&
+                (candidate.numberValue in solidNumbers ||
+                    candidate.readResult.centralMeanGray <= ABSOLUTE_DARK_MEAN_THRESHOLD ||
+                    medianGray - candidate.readResult.centralMeanGray >= MIN_PEER_GRAY_CONTRAST)
+        }
+        val selected = marked.minWithOrNull(
+            compareBy<AndroidAdmissionNumberCandidate> { it.readResult.centralMeanGray }
+                .thenByDescending { it.readResult.centralBlackCount }
+                .thenByDescending { it.readResult.cleanedTotalBlackCount }
+                .thenByDescending { it.readResult.totalBlackCount },
         )
 
         return AndroidAdmissionDigitReadResult(

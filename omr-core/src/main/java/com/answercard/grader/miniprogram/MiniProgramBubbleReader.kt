@@ -7,10 +7,11 @@ import kotlin.math.sqrt
 object MiniProgramBubbleReader {
     private const val BLACK_RATIO = 0.2
     private const val RANGE_PERCENT = 0.9
-    private const val MIN_SAMPLE_SIZE = 16
+    private const val MIN_SAMPLE_SIZE = 14
     private const val MIN_SOLID_NEIGHBOR_BLACK_COUNT = 8
     private const val MIN_CONTAIN_RATIO = 0.05
     private const val MIN_SOLID_BOUNDS_RATIO = 0.25
+    private const val ABSOLUTE_DARK_MEAN_THRESHOLD = 80.0
 
     fun read(
         frame: MiniProgramFrame,
@@ -50,7 +51,8 @@ object MiniProgramBubbleReader {
         val minContainCount = maxOf(4, (centralArea * MIN_CONTAIN_RATIO).toInt())
         val minSolidWidth = (sampleColumns * MIN_SOLID_BOUNDS_RATIO).toInt().coerceAtLeast(1)
         val minSolidHeight = (sampleRows * MIN_SOLID_BOUNDS_RATIO).toInt().coerceAtLeast(1)
-        val isMarked = solidity.containCount >= minContainCount &&
+        val isMarked = centralMeanGrayValue <= ABSOLUTE_DARK_MEAN_THRESHOLD ||
+            solidity.containCount >= minContainCount &&
             solidity.boundsWidth >= minSolidWidth &&
             solidity.boundsHeight >= minSolidHeight
         val debugMatrix = cleanedBinary.asList()

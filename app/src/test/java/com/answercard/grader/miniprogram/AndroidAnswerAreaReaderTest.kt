@@ -48,6 +48,19 @@ class AndroidAnswerAreaReaderTest {
     }
 
     @Test
+    fun rejectsLowContrastAdaptiveThresholdArtifact() {
+        val fixture = Fixture(questionCount = 1, backgroundValue = 200)
+        fixture.mark(questionIndex = 0, optionIndex = 1, markSize = 9, value = 179)
+
+        val result = AndroidAnswerAreaReader.read(fixture.frame(), fixture.grid, fixture.layout)
+
+        val question = result.questions.single()
+        assertTrue(question.optionResults.single { it.optionIndex == 1 }.readResult.isMarked)
+        assertTrue(question.isBlank)
+        assertTrue(result.debugInfo.contains("lowContrastMarksRejected=1"))
+    }
+
+    @Test
     fun usesTemplateOptionLabelsWhenProvided() {
         val fixture = Fixture(questionCount = 1, optionCounts = listOf(2))
         fixture.mark(questionIndex = 0, optionIndex = 0)
@@ -278,12 +291,13 @@ class AndroidAnswerAreaReaderTest {
     private class Fixture(
         questionCount: Int,
         optionCounts: List<Int> = List(questionCount) { 4 },
+        backgroundValue: Int = 255,
     ) {
         val layout: AndroidPaperTemplateLayout = AndroidPaperTemplateBuilder.build(optionCounts)
         val grid: MiniProgramGrid
         private val width = layout.gridColumns * CELL_SIZE
         private val height = layout.gridRows * CELL_SIZE
-        private val pixels = IntArray(width * height) { 255 }
+        private val pixels = IntArray(width * height) { backgroundValue }
 
         init {
             grid = MiniProgramGridBuilder.build(
@@ -296,7 +310,12 @@ class AndroidAnswerAreaReaderTest {
             )
         }
 
-        fun mark(questionIndex: Int, optionIndex: Int, markSize: Int = MARK_SIZE) {
+        fun mark(
+            questionIndex: Int,
+            optionIndex: Int,
+            markSize: Int = MARK_SIZE,
+            value: Int = 0,
+        ) {
             val mapping = layout.questionMappings.single {
                 it.questionIndex == questionIndex && it.optionIndex == optionIndex
             }
@@ -304,7 +323,7 @@ class AndroidAnswerAreaReaderTest {
             val left = mapping.column * CELL_SIZE + MARK_MARGIN
             for (row in top until top + markSize) {
                 for (column in left until left + markSize) {
-                    pixels[row * width + column] = 0
+                    pixels[row * width + column] = value
                 }
             }
         }

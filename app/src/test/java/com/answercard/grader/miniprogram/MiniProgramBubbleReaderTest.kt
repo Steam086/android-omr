@@ -34,6 +34,17 @@ class MiniProgramBubbleReaderTest {
     }
 
     @Test
+    fun uniformlyDarkCellIsMarkedWhenAdaptiveThresholdCollapses() {
+        val frame = frame(width = 80, height = 80, value = 230)
+        fillRect(frame, row = 10, column = 10, height = 24, width = 24, value = 20)
+
+        val result = MiniProgramBubbleReader.read(frame, cell(row = 10, column = 10, size = 24))
+
+        assertTrue(result.centralMeanGray <= 20.0)
+        assertTrue(result.isMarked)
+    }
+
+    @Test
     fun narrowLineDoesNotMarkCellEvenWhenCentralAreaHasBlackPixels() {
         val frame = frame(width = 80, height = 80, value = 230)
         fillRect(frame, row = 10, column = 20, height = 24, width = 3, value = 20)
@@ -163,7 +174,7 @@ class MiniProgramBubbleReaderTest {
         assertEquals("cell points must be finite", MiniProgramBubbleReader.read(frame, invalidCell).failureReason)
         assertEquals("cell must be inside frame", MiniProgramBubbleReader.read(frame, outOfBoundsCell).failureReason)
         assertEquals(
-            "cell sample size must be at least 16 by 16, actual=4x4",
+            "cell sample size must be at least 14 by 14, actual=4x4",
             MiniProgramBubbleReader.read(frame, tooSmallCell).failureReason,
         )
         assertEquals("cell points must form a valid quadrilateral", MiniProgramBubbleReader.read(frame, reversedCell).failureReason)

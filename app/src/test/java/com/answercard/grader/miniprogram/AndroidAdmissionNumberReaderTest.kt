@@ -71,6 +71,19 @@ class AndroidAdmissionNumberReaderTest {
     }
 
     @Test
+    fun rejectsLowContrastAdaptiveThresholdArtifact() {
+        val fixture = Fixture(backgroundValue = 200)
+        fixture.mark(digitIndex = 0, numberValue = 1, markSize = 9, value = 179)
+
+        val result = AndroidAdmissionNumberReader.read(fixture.frame(), fixture.grid, fixture.layout)
+
+        val candidate = result.digitResults[0].candidates.single { it.numberValue == 1 }
+        assertTrue(candidate.readResult.isMarked)
+        assertTrue(result.digitResults[0].isBlank)
+        assertNull(result.digitResults[0].selectedNumber)
+    }
+
+    @Test
     fun reportsMultiMarkedDigitAndKeepsRawCandidates() {
         val fixture = Fixture()
         fixture.mark(digitIndex = 0, numberValue = 1)
@@ -275,12 +288,12 @@ class AndroidAdmissionNumberReaderTest {
         assertTrue(nine.readResult.edgeCleanDirections.contains(MiniProgramEdgeCleanDirection.RIGHT))
     }
 
-    private class Fixture {
+    private class Fixture(backgroundValue: Int = 255) {
         val layout: AndroidPaperTemplateLayout = AndroidPaperTemplateBuilder.build(List(15) { 4 })
         val grid: MiniProgramGrid
         private val width = layout.gridColumns * CELL_SIZE
         private val height = layout.gridRows * CELL_SIZE
-        private val pixels = IntArray(width * height) { 255 }
+        private val pixels = IntArray(width * height) { backgroundValue }
 
         init {
             grid = MiniProgramGridBuilder.build(
@@ -297,6 +310,7 @@ class AndroidAdmissionNumberReaderTest {
             digitIndex: Int,
             numberValue: Int,
             markSize: Int = DEFAULT_MARK_SIZE,
+            value: Int = 0,
         ) {
             val mapping = layout.admissionNumberMappings.single {
                 it.digitIndex == digitIndex && it.numberValue == numberValue
@@ -305,7 +319,7 @@ class AndroidAdmissionNumberReaderTest {
             val left = mapping.column * CELL_SIZE + (CELL_SIZE - markSize) / 2
             for (row in top until top + markSize) {
                 for (column in left until left + markSize) {
-                    pixels[row * width + column] = 0
+                    pixels[row * width + column] = value
                 }
             }
         }

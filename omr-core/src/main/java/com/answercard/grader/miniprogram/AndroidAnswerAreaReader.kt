@@ -5,6 +5,8 @@ import com.answercard.grader.template.QuestionType
 object AndroidAnswerAreaReader {
     private val OPTION_LABELS = listOf("A", "B", "C", "D")
     private const val SINGLE_CHOICE_KEEP_RATIO = 0.84
+    private const val ABSOLUTE_DARK_MEAN_THRESHOLD = 80.0
+    private const val MIN_PEER_GRAY_CONTRAST = 18.0
 
     fun read(
         frame: MiniProgramFrame,
@@ -104,6 +106,7 @@ object AndroidAnswerAreaReader {
         var bubbleOnlyMarks = 0
         var bothMarks = 0
         var optionReadFailures = 0
+        val solidMarkedOptionKeys = mutableSetOf<AndroidPaperQuestionCellKey>()
         layout.questionMappings.forEach { mapping ->
             val cellResult = cellResolver(mapping)
             val cell = cellResult.cell ?: return failure(cellResult.failureReason ?: "question cell is missing", debugInfo)
@@ -123,6 +126,9 @@ object AndroidAnswerAreaReader {
                 readResult.copy(isMarked = false)
             }
             val solidMarked = solidMarkResolver?.invoke(mapping) == true
+            if (solidMarked) {
+                solidMarkedOptionKeys += AndroidPaperQuestionCellKey(mapping.questionIndex, mapping.optionIndex)
+            }
             val bubbleMarked = bubbleReadResult.isMarked
             if (solidMarked && bubbleMarked) bothMarks += 1
             if (solidMarked && !bubbleMarked) solidOnlyMarks += 1
@@ -140,11 +146,18 @@ object AndroidAnswerAreaReader {
         }
 
         var ambiguousSingleChoiceCount = 0
+        var lowContrastMarksRejected = 0
         val questions = optionResults
             .groupBy { it.questionIndex }
             .toSortedMap()
             .map { (questionIndex, options) ->
-                val marked = options.filter { it.readResult.isMarked }
+                val marked = options.filter { option ->
+                    if (!option.readResult.isMarked) return@filter false
+                    val key = AndroidPaperQuestionCellKey(option.questionIndex, option.optionIndex)
+                    val credible = key in solidMarkedOptionKeys || isCredibleBubbleMark(option, options)
+                    if (!credible) lowContrastMarksRejected += 1
+                    credible
+                }
                 val questionType = questionTypeResolver(options.first().mapping())
                 val selected = selectedOptionsForQuestion(questionType, marked)
                 if (isAmbiguousSingleChoice(questionType, marked)) ambiguousSingleChoiceCount += 1
@@ -163,6 +176,7 @@ object AndroidAnswerAreaReader {
         debugInfo += "bubbleOnlyMarks=$bubbleOnlyMarks"
         debugInfo += "bothMarks=$bothMarks"
         debugInfo += "optionReadFailures=$optionReadFailures"
+        debugInfo += "lowContrastMarksRejected=$lowContrastMarksRejected"
         debugInfo += "singleChoiceAmbiguous=$ambiguousSingleChoiceCount"
         debugInfo += "questions=${questions.size}"
         return AndroidAnswerAreaReadResult(
@@ -210,13 +224,25 @@ object AndroidAnswerAreaReader {
         if (questionType == QuestionType.MULTIPLE || marked.size <= 1) {
             return marked.sortedBy { it.optionIndex }
         }
-        val best = marked.maxWithOrNull(
-            compareBy<AndroidOptionReadResult> { markStrength(it.readResult) }
-                .thenBy { it.readResult.containCount }
-                .thenBy { it.readResult.cleanedTotalBlackCount }
-                .thenBy { it.readResult.totalBlackCount },
+        val best = marked.minWithOrNull(
+            compareBy<AndroidOptionReadResult> { it.readResult.centralMeanGray }
+                .thenByDescending { it.readResult.containCount }
+                .thenByDescending { it.readResult.cleanedTotalBlackCount }
+                .thenByDescending { it.readResult.totalBlackCount },
         ) ?: return emptyList()
         return listOf(best)
+    }
+
+    private fun isCredibleBubbleMark(
+        option: AndroidOptionReadResult,
+        peers: List<AndroidOptionReadResult>,
+    ): Boolean {
+        val mean = option.readResult.centralMeanGray
+        if (mean <= ABSOLUTE_DARK_MEAN_THRESHOLD) return true
+        val peerMeans = peers.filterNot { it === option }.map { it.readResult.centralMeanGray }.sorted()
+        if (peerMeans.isEmpty()) return true
+        val peerMedian = peerMeans[peerMeans.size / 2]
+        return peerMedian - mean >= MIN_PEER_GRAY_CONTRAST
     }
 
     private fun markStrength(readResult: MiniProgramBubbleReadResult): Double =
