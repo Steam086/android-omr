@@ -153,6 +153,19 @@ class AndroidAnswerAreaReaderTest {
         }
     }
 
+    @Test
+    fun passesEdgeCleanDirectionsForAnswerAreaBoundaries() {
+        val fixture = Fixture(questionCount = 5)
+
+        val result = AndroidAnswerAreaReader.read(fixture.frame(), fixture.grid, fixture.layout)
+
+        val firstOption = result.questions.single { it.questionIndex == 0 }.optionResults.single { it.optionIndex == 0 }
+        val lastOption = result.questions.single { it.questionIndex == 0 }.optionResults.single { it.optionIndex == 3 }
+        assertTrue(firstOption.readResult.edgeCleanDirections.contains(MiniProgramEdgeCleanDirection.LEFT))
+        assertTrue(firstOption.readResult.edgeCleanDirections.contains(MiniProgramEdgeCleanDirection.UP))
+        assertTrue(lastOption.readResult.edgeCleanDirections.contains(MiniProgramEdgeCleanDirection.RIGHT))
+    }
+
     private fun assertQuestion(
         result: AndroidAnswerAreaReadResult,
         questionIndex: Int,

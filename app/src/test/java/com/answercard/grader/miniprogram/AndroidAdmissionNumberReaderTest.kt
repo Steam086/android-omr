@@ -186,6 +186,20 @@ class AndroidAdmissionNumberReaderTest {
         }
     }
 
+    @Test
+    fun passesEdgeCleanDirectionsForAdmissionNumberBoundaries() {
+        val fixture = Fixture()
+
+        val result = AndroidAdmissionNumberReader.read(fixture.frame(), fixture.grid, fixture.layout)
+
+        val zero = result.digitResults.first().candidates.single { it.numberValue == 0 }
+        val nine = result.digitResults.first().candidates.single { it.numberValue == 9 }
+        assertTrue(zero.readResult.edgeCleanDirections.contains(MiniProgramEdgeCleanDirection.LEFT))
+        assertTrue(zero.readResult.edgeCleanDirections.contains(MiniProgramEdgeCleanDirection.UP))
+        assertTrue(zero.readResult.edgeCleanDirections.contains(MiniProgramEdgeCleanDirection.DOWN))
+        assertTrue(nine.readResult.edgeCleanDirections.contains(MiniProgramEdgeCleanDirection.RIGHT))
+    }
+
     private class Fixture {
         val layout: AndroidPaperTemplateLayout = AndroidPaperTemplateBuilder.build(List(15) { 4 })
         val grid: MiniProgramGrid

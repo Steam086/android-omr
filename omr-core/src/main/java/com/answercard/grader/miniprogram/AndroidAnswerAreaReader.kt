@@ -83,7 +83,7 @@ object AndroidAnswerAreaReader {
         val debugInfo = mutableListOf<String>()
         debugInfo += "templateType=${layout.templateType}"
         debugInfo += "questionMappings=${layout.questionMappings.size}"
-        debugInfo += "edgeCleanDirections=none"
+        debugInfo += "edgeCleanDirections=active"
         debugInfo += debugSource
         debugInfo += solidMarkDebugInfo
 
@@ -91,7 +91,12 @@ object AndroidAnswerAreaReader {
         layout.questionMappings.forEach { mapping ->
             val cellResult = cellResolver(mapping)
             val cell = cellResult.cell ?: return failure(cellResult.failureReason ?: "question cell is missing", debugInfo)
-            val readResult = MiniProgramBubbleReader.read(frame = frame, cell = cell)
+            val edgeCleanDirections = AndroidPaperEdgeCleanDirections.forQuestion(mapping, layout)
+            val readResult = MiniProgramBubbleReader.read(
+                frame = frame,
+                cell = cell,
+                edgeCleanDirections = edgeCleanDirections,
+            )
             if (readResult.failureReason != null) {
                 return failure(
                     "bubble read failed: questionIndex=${mapping.questionIndex}, " +

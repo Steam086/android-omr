@@ -75,7 +75,7 @@ object AndroidAdmissionNumberReader {
         val debugInfo = mutableListOf<String>()
         debugInfo += "templateType=${layout.templateType}"
         debugInfo += "admissionNumberMappings=${layout.admissionNumberMappings.size}"
-        debugInfo += "edgeCleanDirections=none"
+        debugInfo += "edgeCleanDirections=active"
         debugInfo += debugSource
         debugInfo += solidMarkDebugInfo
 
@@ -83,7 +83,12 @@ object AndroidAdmissionNumberReader {
         layout.admissionNumberMappings.forEach { mapping ->
             val cellResult = cellResolver(mapping)
             val cell = cellResult.cell ?: return failure(cellResult.failureReason ?: "admission cell is missing", debugInfo)
-            val readResult = MiniProgramBubbleReader.read(frame = frame, cell = cell)
+            val edgeCleanDirections = AndroidPaperEdgeCleanDirections.forAdmission(mapping, layout)
+            val readResult = MiniProgramBubbleReader.read(
+                frame = frame,
+                cell = cell,
+                edgeCleanDirections = edgeCleanDirections,
+            )
             if (readResult.failureReason != null) {
                 return failure(
                     "bubble read failed: digitIndex=${mapping.digitIndex}, " +
