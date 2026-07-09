@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import com.answercard.grader.template.AddQuestionRequest
 import com.answercard.grader.template.EditQuestionRequest
 import com.answercard.grader.template.QuestionSetting
+import com.answercard.grader.template.QuestionType
 import com.answercard.grader.template.TemplateState
 import com.answercard.grader.template.optionLabels
 
@@ -190,8 +191,8 @@ fun TemplateEditSheet(
         visible = batchDialogOpen,
         selectedCount = selectedCount,
         onDismiss = { batchDialogOpen = false },
-        onConfirm = { score, optionCount ->
-            onTemplateChange(template.batchEditSelectedQuestions(score = score, optionCount = optionCount))
+        onConfirm = { score, optionCount, type ->
+            onTemplateChange(template.batchEditSelectedQuestions(score = score, optionCount = optionCount, type = type))
             batchDialogOpen = false
         },
     )
@@ -234,7 +235,15 @@ private fun EditQuestionRow(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             question.options.forEach { option ->
-                AnswerPill(label = option, selected = question.answer == option, onClick = { onAnswerChange(option) })
+                AnswerPill(
+                    label = option,
+                    selected = if (question.type == QuestionType.MULTIPLE) {
+                        question.answer.contains(option)
+                    } else {
+                        question.answer == option
+                    },
+                    onClick = { onAnswerChange(option) },
+                )
             }
         }
         Text("编辑", color = UiTokens.Green, fontSize = 12.sp, modifier = Modifier.clickable(onClick = onEdit))
@@ -269,12 +278,14 @@ private fun AddQuestionDialog(
     var count by remember { mutableStateOf("1") }
     var score by remember { mutableStateOf("2") }
     var optionCount by remember { mutableStateOf(4) }
+    var type by remember { mutableStateOf(QuestionType.SINGLE) }
     LaunchedEffect(visible, defaultStart) {
         if (visible) {
             startNumber = defaultStart.toString()
             count = "1"
             score = "2"
             optionCount = 4
+            type = QuestionType.SINGLE
         }
     }
 
@@ -289,7 +300,12 @@ private fun AddQuestionDialog(
                 MiniNumberField("题数", count, { count = it }, Modifier.weight(1f))
                 MiniNumberField("分值", score, { score = it }, Modifier.weight(1f))
             }
-            TypeAndOptions(optionCount = optionCount, onOptionCountChange = { optionCount = it })
+            TypeAndOptions(
+                type = type,
+                onTypeChange = { type = it },
+                optionCount = optionCount,
+                onOptionCountChange = { optionCount = it },
+            )
         },
         onConfirm = { setError ->
             val parsedStart = startNumber.toIntOrNull()
@@ -305,6 +321,7 @@ private fun AddQuestionDialog(
                         count = parsedCount,
                         score = parsedScore,
                         optionCount = optionCount,
+                        type = type,
                     ),
                 )
             }
@@ -322,11 +339,13 @@ private fun EditQuestionDialog(
     var number by remember { mutableStateOf(question.number.toString()) }
     var score by remember { mutableStateOf(question.score.toString()) }
     var optionCount by remember { mutableStateOf(question.optionCount.coerceIn(2, 4)) }
+    var type by remember { mutableStateOf(question.type) }
     LaunchedEffect(visible, question) {
         if (visible) {
             number = question.number.toString()
             score = question.score.toString()
             optionCount = question.optionCount.coerceIn(2, 4)
+            type = question.type
         }
     }
 
@@ -340,7 +359,12 @@ private fun EditQuestionDialog(
                 MiniNumberField("题号", number, { number = it }, Modifier.weight(1f))
                 MiniNumberField("分值", score, { score = it }, Modifier.weight(1f))
             }
-            TypeAndOptions(optionCount = optionCount, onOptionCountChange = { optionCount = it })
+            TypeAndOptions(
+                type = type,
+                onTypeChange = { type = it },
+                optionCount = optionCount,
+                onOptionCountChange = { optionCount = it },
+            )
         },
         onConfirm = { setError ->
             val parsedNumber = number.toIntOrNull()
@@ -353,6 +377,7 @@ private fun EditQuestionDialog(
                         number = parsedNumber,
                         score = parsedScore,
                         optionCount = optionCount,
+                        type = type,
                     ),
                 )
             }
@@ -365,14 +390,16 @@ private fun BatchEditDialog(
     visible: Boolean,
     selectedCount: Int,
     onDismiss: () -> Unit,
-    onConfirm: (Int, Int) -> Unit,
+    onConfirm: (Int, Int, QuestionType) -> Unit,
 ) {
     var score by remember { mutableStateOf("2") }
     var optionCount by remember { mutableStateOf(4) }
+    var type by remember { mutableStateOf(QuestionType.SINGLE) }
     LaunchedEffect(visible) {
         if (visible) {
             score = "2"
             optionCount = 4
+            type = QuestionType.SINGLE
         }
     }
 
@@ -386,14 +413,19 @@ private fun BatchEditDialog(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 MiniNumberField("分值", score, { score = it }, Modifier.weight(1f))
             }
-            TypeAndOptions(optionCount = optionCount, onOptionCountChange = { optionCount = it })
+            TypeAndOptions(
+                type = type,
+                onTypeChange = { type = it },
+                optionCount = optionCount,
+                onOptionCountChange = { optionCount = it },
+            )
         },
         onConfirm = { setError ->
             val parsedScore = score.toIntOrNull()
             when {
                 selectedCount <= 0 -> setError("请先选择题目")
                 parsedScore == null || parsedScore < 0 -> setError("请输入正确的分值")
-                else -> onConfirm(parsedScore, optionCount)
+                else -> onConfirm(parsedScore, optionCount, type)
             }
         },
     )
@@ -477,11 +509,24 @@ private fun QuestionFormFrame(
 }
 
 @Composable
-private fun TypeAndOptions(optionCount: Int, onOptionCountChange: (Int) -> Unit) {
+private fun TypeAndOptions(
+    type: QuestionType,
+    onTypeChange: (QuestionType) -> Unit,
+    optionCount: Int,
+    onOptionCountChange: (Int) -> Unit,
+) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
         Text("题型:", fontSize = 15.sp, color = UiTokens.TextPrimary)
-        DisabledChoice("单选", selected = true)
-        DisabledChoice("多选", selected = false)
+        Choice(
+            label = "单选",
+            selected = type == QuestionType.SINGLE,
+            onClick = { onTypeChange(QuestionType.SINGLE) },
+        )
+        Choice(
+            label = "多选",
+            selected = type == QuestionType.MULTIPLE,
+            onClick = { onTypeChange(QuestionType.MULTIPLE) },
+        )
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("选项个数:", fontSize = 15.sp, color = UiTokens.TextPrimary)
@@ -518,8 +563,12 @@ private fun MiniNumberField(label: String, value: String, onValueChange: (String
 }
 
 @Composable
-private fun DisabledChoice(label: String, selected: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+private fun Choice(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
         Box(
             Modifier
                 .size(16.dp)

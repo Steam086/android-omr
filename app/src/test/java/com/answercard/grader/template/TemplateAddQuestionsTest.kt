@@ -39,7 +39,7 @@ class TemplateAddQuestionsTest {
     }
 
     @Test
-    fun addQuestionRequestRejectsMultipleChoiceForNow() {
+    fun addQuestionRequestPreservesMultipleChoice() {
         val template = TemplateState.default().addQuestions(
             AddQuestionRequest(
                 startNumber = 16,
@@ -50,7 +50,7 @@ class TemplateAddQuestionsTest {
             ),
         )
 
-        assertEquals(QuestionType.SINGLE, template.questions.last().type)
+        assertEquals(QuestionType.MULTIPLE, template.questions.last().type)
     }
 
     @Test

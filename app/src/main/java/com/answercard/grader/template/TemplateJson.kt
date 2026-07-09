@@ -49,7 +49,7 @@ object TemplateJson {
 
                 QuestionSetting(
                     number = item.getInt("number"),
-                    answer = item.optString("answer", "A").takeIf { it in labels }.orEmpty(),
+                    answer = normalizeQuestionAnswer(item.optString("answer", "A"), labels, type),
                     score = item.optInt("score", 2).coerceAtLeast(0),
                     optionCount = optionCount,
                     options = labels,
