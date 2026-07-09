@@ -34,6 +34,33 @@ class MiniProgramBubbleReaderTest {
     }
 
     @Test
+    fun narrowLineDoesNotMarkCellEvenWhenCentralAreaHasBlackPixels() {
+        val frame = frame(width = 80, height = 80, value = 230)
+        fillRect(frame, row = 10, column = 20, height = 24, width = 3, value = 20)
+
+        val result = MiniProgramBubbleReader.read(frame, cell(row = 10, column = 10, size = 24))
+
+        assertFalse(result.isMarked)
+        assertTrue(result.centralBlackCount > 0)
+        assertTrue(result.solidBoundsWidth < 6)
+        assertTrue(result.centralMeanGray < 230.0)
+    }
+
+    @Test
+    fun solidBlockReportsContainCountAndBounds() {
+        val frame = frame(width = 80, height = 80, value = 230)
+        fillRect(frame, row = 16, column = 16, height = 12, width = 12, value = 20)
+
+        val result = MiniProgramBubbleReader.read(frame, cell(row = 10, column = 10, size = 24))
+
+        assertTrue(result.isMarked)
+        assertTrue(result.containCount >= 4)
+        assertTrue(result.solidBoundsWidth >= 6)
+        assertTrue(result.solidBoundsHeight >= 6)
+        assertTrue(result.centralMeanGray < 230.0)
+    }
+
+    @Test
     fun centralSmallNoiseIsRemovedBeforeMarkedDecision() {
         val frame = frame(width = 80, height = 80, value = 230)
         frame.pixels[20 * frame.width + 20] = 20
