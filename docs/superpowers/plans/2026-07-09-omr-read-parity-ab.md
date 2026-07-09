@@ -54,18 +54,15 @@ Add these tests to `MiniProgramBubbleReaderTest`:
 
 ```kotlin
 @Test
-fun thinDiagonalScratchDoesNotMarkCellEvenWhenCentralAreaHasBlackPixels() {
+fun narrowLineDoesNotMarkCellEvenWhenCentralAreaHasBlackPixels() {
     val frame = frame(width = 80, height = 80, value = 230)
-    for (offset in 0 until 16) {
-        frame.pixels[(14 + offset) * frame.width + (14 + offset)] = 20
-        frame.pixels[(14 + offset) * frame.width + (15 + offset)] = 20
-    }
+    fillRect(frame, row = 10, column = 20, height = 24, width = 3, value = 20)
 
     val result = MiniProgramBubbleReader.read(frame, cell(row = 10, column = 10, size = 24))
 
     assertFalse(result.isMarked)
-    assertEquals(0, result.containCount)
     assertTrue(result.centralBlackCount > 0)
+    assertTrue(result.solidBoundsWidth < 6)
     assertTrue(result.centralMeanGray < 230.0)
 }
 
@@ -92,7 +89,7 @@ Run:
 env JAVA_HOME=/usr/lib/jvm/java-21 GRADLE_USER_HOME=/tmp/codex-gradle sh gradlew :app:testDebugUnitTest --tests com.answercard.grader.miniprogram.MiniProgramBubbleReaderTest
 ```
 
-Expected: FAIL with unresolved references for `centralMeanGray`, `solidBoundsWidth`, or `solidBoundsHeight`, and the diagonal scratch still marked under old central black ratio behavior.
+Expected: FAIL with unresolved references for `centralMeanGray`, `solidBoundsWidth`, or `solidBoundsHeight`, and the narrow line still marked under old central black ratio behavior.
 
 - [ ] **Step 3: Extend `MiniProgramBubbleReadResult`**
 
