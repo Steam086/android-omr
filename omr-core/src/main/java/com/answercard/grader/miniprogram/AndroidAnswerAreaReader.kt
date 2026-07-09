@@ -1,13 +1,17 @@
 package com.answercard.grader.miniprogram
 
+import com.answercard.grader.template.QuestionType
+
 object AndroidAnswerAreaReader {
     private val OPTION_LABELS = listOf("A", "B", "C", "D")
+    private const val SINGLE_CHOICE_KEEP_RATIO = 0.84
 
     fun read(
         frame: MiniProgramFrame,
         grid: MiniProgramGrid,
         layout: AndroidPaperTemplateLayout,
         optionLabelsByQuestion: List<List<String>> = emptyList(),
+        questionTypesByQuestion: List<QuestionType> = emptyList(),
     ): AndroidAnswerAreaReadResult {
         return read(
             frame = frame,
@@ -31,6 +35,9 @@ object AndroidAnswerAreaReader {
             optionLabelResolver = { mapping ->
                 optionLabelsByQuestion.labelFor(mapping)
             },
+            questionTypeResolver = { mapping ->
+                questionTypesByQuestion.getOrNull(mapping.questionIndex) ?: QuestionType.SINGLE
+            },
         )
     }
 
@@ -39,6 +46,7 @@ object AndroidAnswerAreaReader {
         layout: AndroidPaperTemplateLayout,
         projectedCells: AndroidPaperProjectedCells,
         optionLabelsByQuestion: List<List<String>> = emptyList(),
+        questionTypesByQuestion: List<QuestionType> = emptyList(),
         solidMarks: AndroidSolidMarkOverlay? = null,
     ): AndroidAnswerAreaReadResult {
         return read(
@@ -64,6 +72,9 @@ object AndroidAnswerAreaReader {
             optionLabelResolver = { mapping ->
                 optionLabelsByQuestion.labelFor(mapping)
             },
+            questionTypeResolver = { mapping ->
+                questionTypesByQuestion.getOrNull(mapping.questionIndex) ?: QuestionType.SINGLE
+            },
             solidMarkResolver = solidMarks
                 ?.takeIf { it.hasQuestionMarks }
                 ?.let { marks -> { mapping -> marks.isQuestionMarked(mapping) } },
@@ -77,6 +88,7 @@ object AndroidAnswerAreaReader {
         cellResolver: (AndroidPaperQuestionMapping) -> CellResolveResult,
         debugSource: String,
         optionLabelResolver: (AndroidPaperQuestionMapping) -> String,
+        questionTypeResolver: (AndroidPaperQuestionMapping) -> QuestionType,
         solidMarkResolver: (((AndroidPaperQuestionMapping) -> Boolean))? = null,
         solidMarkDebugInfo: List<String> = emptyList(),
     ): AndroidAnswerAreaReadResult {
@@ -88,6 +100,10 @@ object AndroidAnswerAreaReader {
         debugInfo += solidMarkDebugInfo
 
         val optionResults = mutableListOf<AndroidOptionReadResult>()
+        var solidOnlyMarks = 0
+        var bubbleOnlyMarks = 0
+        var bothMarks = 0
+        var optionReadFailures = 0
         layout.questionMappings.forEach { mapping ->
             val cellResult = cellResolver(mapping)
             val cell = cellResult.cell ?: return failure(cellResult.failureReason ?: "question cell is missing", debugInfo)
@@ -98,16 +114,20 @@ object AndroidAnswerAreaReader {
                 edgeCleanDirections = edgeCleanDirections,
             )
             if (readResult.failureReason != null) {
-                return failure(
-                    "bubble read failed: questionIndex=${mapping.questionIndex}, " +
-                        "optionIndex=${mapping.optionIndex}, reason=${readResult.failureReason}",
-                    debugInfo,
-                )
+                optionReadFailures += 1
+                debugInfo += "optionReadFailure=questionIndex=${mapping.questionIndex},optionIndex=${mapping.optionIndex},reason=${readResult.failureReason}"
             }
-
-            val effectiveReadResult = solidMarkResolver?.let { resolver ->
-                readResult.copy(isMarked = resolver(mapping))
-            } ?: readResult
+            val bubbleReadResult = if (readResult.failureReason == null) {
+                readResult
+            } else {
+                readResult.copy(isMarked = false)
+            }
+            val solidMarked = solidMarkResolver?.invoke(mapping) == true
+            val bubbleMarked = bubbleReadResult.isMarked
+            if (solidMarked && bubbleMarked) bothMarks += 1
+            if (solidMarked && !bubbleMarked) solidOnlyMarks += 1
+            if (!solidMarked && bubbleMarked) bubbleOnlyMarks += 1
+            val effectiveReadResult = bubbleReadResult.copy(isMarked = bubbleMarked || solidMarked)
 
             optionResults += AndroidOptionReadResult(
                 questionIndex = mapping.questionIndex,
@@ -119,22 +139,15 @@ object AndroidAnswerAreaReader {
             )
         }
 
+        var ambiguousSingleChoiceCount = 0
         val questions = optionResults
             .groupBy { it.questionIndex }
             .toSortedMap()
             .map { (questionIndex, options) ->
                 val marked = options.filter { it.readResult.isMarked }
-                val selected = if (marked.size > 1) {
-                    listOf(
-                        marked.maxWithOrNull(
-                            compareBy<AndroidOptionReadResult> { it.readResult.centralBlackCount }
-                                .thenBy { it.readResult.cleanedTotalBlackCount }
-                                .thenBy { it.readResult.totalBlackCount },
-                        )!!,
-                    )
-                } else {
-                    marked
-                }
+                val questionType = questionTypeResolver(options.first().mapping())
+                val selected = selectedOptionsForQuestion(questionType, marked)
+                if (isAmbiguousSingleChoice(questionType, marked)) ambiguousSingleChoiceCount += 1
                 AndroidQuestionReadResult(
                     questionIndex = questionIndex,
                     selectedOptions = selected.map { it.optionIndex },
@@ -145,6 +158,12 @@ object AndroidAnswerAreaReader {
                 )
             }
 
+        debugInfo += "solidFusion=union"
+        debugInfo += "solidOnlyMarks=$solidOnlyMarks"
+        debugInfo += "bubbleOnlyMarks=$bubbleOnlyMarks"
+        debugInfo += "bothMarks=$bothMarks"
+        debugInfo += "optionReadFailures=$optionReadFailures"
+        debugInfo += "singleChoiceAmbiguous=$ambiguousSingleChoiceCount"
         debugInfo += "questions=${questions.size}"
         return AndroidAnswerAreaReadResult(
             questions = questions,
@@ -183,6 +202,43 @@ object AndroidAnswerAreaReader {
     private fun List<List<String>>.labelFor(mapping: AndroidPaperQuestionMapping): String =
         getOrNull(mapping.questionIndex)?.getOrNull(mapping.optionIndex)
             ?: optionLabel(mapping.optionIndex)
+
+    private fun selectedOptionsForQuestion(
+        questionType: QuestionType,
+        marked: List<AndroidOptionReadResult>,
+    ): List<AndroidOptionReadResult> {
+        if (questionType == QuestionType.MULTIPLE || marked.size <= 1) {
+            return marked.sortedBy { it.optionIndex }
+        }
+        val best = marked.maxWithOrNull(
+            compareBy<AndroidOptionReadResult> { markStrength(it.readResult) }
+                .thenBy { it.readResult.containCount }
+                .thenBy { it.readResult.cleanedTotalBlackCount }
+                .thenBy { it.readResult.totalBlackCount },
+        ) ?: return emptyList()
+        return listOf(best)
+    }
+
+    private fun markStrength(readResult: MiniProgramBubbleReadResult): Double =
+        (readResult.blackThreshold.toDouble() - readResult.centralMeanGray).coerceAtLeast(0.0)
+
+    private fun isAmbiguousSingleChoice(
+        questionType: QuestionType,
+        marked: List<AndroidOptionReadResult>,
+    ): Boolean {
+        if (questionType != QuestionType.SINGLE || marked.size <= 1) return false
+        val bestStrength = marked.maxOf { markStrength(it.readResult) }
+        if (bestStrength <= 0.0) return marked.size > 1
+        return marked.count { markStrength(it.readResult) >= bestStrength * SINGLE_CHOICE_KEEP_RATIO } > 1
+    }
+
+    private fun AndroidOptionReadResult.mapping(): AndroidPaperQuestionMapping =
+        AndroidPaperQuestionMapping(
+            questionIndex = questionIndex,
+            optionIndex = optionIndex,
+            row = row,
+            column = column,
+        )
 
     private fun failure(reason: String, debugInfo: List<String>): AndroidAnswerAreaReadResult =
         AndroidAnswerAreaReadResult(

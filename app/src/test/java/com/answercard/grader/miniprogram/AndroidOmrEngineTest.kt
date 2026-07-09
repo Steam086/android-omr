@@ -1,6 +1,7 @@
 package com.answercard.grader.miniprogram
 
 import com.answercard.grader.template.QuestionSetting
+import com.answercard.grader.template.QuestionType
 import com.answercard.grader.template.TemplateState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -157,6 +158,30 @@ class AndroidOmrEngineTest {
 
         assertTrue(result.success)
         assertTrue(result.answerArea!!.questions.single { it.questionIndex == 0 }.isMultiMarked)
+    }
+
+    @Test
+    fun preservesAllMarkedOptionsForMultipleChoiceQuestionTypes() {
+        val template = TemplateState(
+            name = "multiple",
+            questions = listOf(
+                QuestionSetting(number = 1, answer = "AC", score = 2, type = QuestionType.MULTIPLE),
+            ),
+        )
+        val synthetic = AndroidOmrSyntheticFrameFactory(template)
+        synthetic.markAdmissionNumber("1234")
+        synthetic.markAnswer(questionIndex = 0, optionIndex = 0)
+        synthetic.markAnswer(questionIndex = 0, optionIndex = 2)
+
+        val result = AndroidOmrEngine.scanWithPrecomputedGridForTest(
+            frame = synthetic.frame(),
+            template = template,
+            grid = synthetic.grid,
+        )
+
+        assertTrue(result.failureReason ?: result.debugInfo.joinToString(), result.success)
+        assertEquals(listOf(0, 2), result.answerArea?.questions?.single()?.selectedOptions)
+        assertEquals(listOf("A", "C"), result.answerArea?.questions?.single()?.selectedLabels)
     }
 
     private fun templateForSuccessfulPath(): TemplateState =

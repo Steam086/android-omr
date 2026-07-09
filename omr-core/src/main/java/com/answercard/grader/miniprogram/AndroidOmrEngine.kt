@@ -175,12 +175,14 @@ object AndroidOmrEngine {
         debugInfo: List<String>,
     ): AndroidOmrResult {
         val optionLabelsByQuestion = template.questions.map { it.options }
+        val questionTypesByQuestion = template.questions.map { it.type }
         val answerArea = if (projectedCells == null) {
             AndroidAnswerAreaReader.read(
                 frame = frame,
                 grid = grid,
                 layout = layout,
                 optionLabelsByQuestion = optionLabelsByQuestion,
+                questionTypesByQuestion = questionTypesByQuestion,
             )
         } else {
             AndroidAnswerAreaReader.read(
@@ -188,6 +190,7 @@ object AndroidOmrEngine {
                 layout = layout,
                 projectedCells = projectedCells,
                 optionLabelsByQuestion = optionLabelsByQuestion,
+                questionTypesByQuestion = questionTypesByQuestion,
                 solidMarks = solidMarks,
             )
         }
