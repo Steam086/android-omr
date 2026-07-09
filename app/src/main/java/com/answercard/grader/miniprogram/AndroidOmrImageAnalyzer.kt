@@ -16,7 +16,6 @@ class AndroidOmrImageAnalyzer(
     private val processor: AndroidOmrFrameProcessor = AndroidOmrFrameProcessor(),
     private val options: AndroidOmrAnalyzerOptions = AndroidOmrAnalyzerOptions(),
     private val frameAdapter: ((ImageProxy) -> MiniProgramFrame)? = null,
-    private val stabilityGate: (() -> Boolean)? = null,
     private val nowMsProvider: () -> Long = System::currentTimeMillis,
 ) : ImageAnalysis.Analyzer {
     private val busy = AtomicBoolean(false)
@@ -26,21 +25,16 @@ class AndroidOmrImageAnalyzer(
     private val droppedFrameCount = AtomicLong(0L)
     private val throttledFrameCount = AtomicLong(0L)
     private val busyFrameCount = AtomicLong(0L)
-    private val unstableFrameCount = AtomicLong(0L)
-    private val blurryFrameCount = AtomicLong(0L)
     private val lastDroppedReason = AtomicReference("none")
     private val lastLaplacianVariance = AtomicReference(Double.NaN)
 
     override fun analyze(image: ImageProxy) {
         val currentFrameIndex = frameIndex.incrementAndGet()
         val processedAtMs = nowMsProvider()
-        if (stabilityGate?.invoke() == false) {
-            droppedFrameCount.incrementAndGet()
-            unstableFrameCount.incrementAndGet()
-            lastDroppedReason.set("unstable")
-            image.close()
-            return
-        }
+        // No stability or sharpness gate here: every frame reaches the engine. Shaky / blurry
+        // frames fail recognition on their own and are filtered by scan consensus downstream,
+        // rather than being guessed as "bad" and dropped before analysis (which froze the live
+        // read while the phone was in motion). Only the busy / interval throttle below applies.
         when (val gateDecision = tryEnterAnalysis(processedAtMs)) {
             FrameGateDecision.Process -> Unit
             FrameGateDecision.Busy -> {
@@ -64,16 +58,8 @@ class AndroidOmrImageAnalyzer(
                     image = image,
                     orientationMode = options.analysisOrientationMode,
                 )
-            if (options.minLaplacianVariance > 0.0) {
-                val sharpness = FrameSharpness.laplacianVariance(frame)
-                lastLaplacianVariance.set(sharpness)
-                if (sharpness < options.minLaplacianVariance) {
-                    droppedFrameCount.incrementAndGet()
-                    blurryFrameCount.incrementAndGet()
-                    lastDroppedReason.set("blurry")
-                    return
-                }
-            }
+            // Measured for the debug panel only (soft signal for tuning), never used to drop.
+            lastLaplacianVariance.set(FrameSharpness.laplacianVariance(frame))
             val imageDebugInfo = image.debugInfo(
                 currentFrameIndex = currentFrameIndex,
                 processedAtMs = processedAtMs,
@@ -122,8 +108,6 @@ class AndroidOmrImageAnalyzer(
             "droppedFrameCount=${droppedFrameCount.get()}",
             "throttledFrameCount=${throttledFrameCount.get()}",
             "busyFrameCount=${busyFrameCount.get()}",
-            "unstableFrameCount=${unstableFrameCount.get()}",
-            "blurryFrameCount=${blurryFrameCount.get()}",
             "analyzerBusy=${busy.get()}",
             "lastDroppedReason=${lastDroppedReason.get()}",
             "laplacianVariance=${formatSharpness(lastLaplacianVariance.get())}",
@@ -183,7 +167,7 @@ class AndroidOmrImageAnalyzer(
         "%.3f".format(Locale.US, value)
 
     private fun formatSharpness(value: Double): String =
-        if (value.isNaN()) "disabled" else "%.1f".format(Locale.US, value)
+        "%.1f".format(Locale.US, value)
 
     private enum class FrameGateDecision {
         Process,

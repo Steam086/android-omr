@@ -92,8 +92,6 @@ fun ScanScreen(
     var displayResult by remember { mutableStateOf<ScanDisplayResult?>(null) }
     var lockedScoreText by remember(template) { mutableStateOf<String?>(null) }
     var deviceStable by remember { mutableStateOf(true) }
-    var stabilityGateEnabled by rememberSaveable { mutableStateOf(true) }
-    val currentStabilityGateEnabled = rememberUpdatedState(stabilityGateEnabled)
     val consensusTracker = remember(template) { ScanConsensusTracker() }
     val stabilityMonitor = remember {
         DeviceStabilityMonitor(context) { stable ->
@@ -171,9 +169,7 @@ fun ScanScreen(
             options = AndroidOmrAnalyzerOptions(
                 analysisOrientationMode = analysisOrientationMode,
                 requestedAnalysisResolutionLabel = CameraAnalysisConfig.RequestedResolutionLabel,
-                minLaplacianVariance = CameraAnalysisConfig.MinFrameSharpness,
             ),
-            stabilityGate = { !currentStabilityGateEnabled.value || stabilityMonitor.isStable() },
         )
     }
 
@@ -215,9 +211,6 @@ fun ScanScreen(
             ) {
                 ScanChromeButton("方向：${analysisOrientationMode.label()}") {
                     analysisOrientationModeName = analysisOrientationMode.next().name
-                }
-                ScanChromeButton(if (stabilityGateEnabled) "防抖：开" else "防抖：关") {
-                    stabilityGateEnabled = !stabilityGateEnabled
                 }
                 ScanChromeButton(if (soundEnabled) "声音：开" else "声音：关") {
                     soundEnabled = !soundEnabled
@@ -298,7 +291,7 @@ fun ScanScreen(
                         .padding(horizontal = 24.dp, vertical = 8.dp),
                 )
             }
-            if (stabilityGateEnabled && !deviceStable) {
+            if (!deviceStable) {
                 Text(
                     text = "请持稳手机…",
                     color = Color.Yellow,

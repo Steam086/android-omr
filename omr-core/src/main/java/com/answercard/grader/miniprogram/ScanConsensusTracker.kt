@@ -7,8 +7,15 @@ sealed interface ScanConsensusDecision {
 }
 
 /**
- * Accepts a scan only after [requiredFrames] consecutive successful frames agree on the
- * same signature (admission number + per-question selections + score).
+ * Locks a scan once [requiredFrames] frames have agreed on the same signature (admission
+ * number + score).
+ *
+ * The tally is cumulative and order-independent: matches for a signature accumulate across the
+ * session and are never reset by an intervening bad frame. Failed / signature-less frames are
+ * no-ops — they neither count nor clear progress — so the dominant reading of a steady card
+ * wins even when a third of the frames fail or a bubble read jitters between frames. This
+ * mirrors "let bad frames fail and let consensus filter" rather than requiring an unbroken run
+ * of identical frames.
  */
 class ScanConsensusTracker(
     private val requiredFrames: Int = 3,
@@ -18,51 +25,35 @@ class ScanConsensusTracker(
         require(requiredFrames >= 1) { "requiredFrames must be at least 1" }
     }
 
-    private var currentSignature: String? = null
-    private var streak = 0
-    private var lockedSignature: String? = null
+    private val counts = LinkedHashMap<String, Int>()
+    private val lockedSignatures = LinkedHashSet<String>()
 
     fun offer(result: AndroidOmrResult): ScanConsensusDecision {
         val signature = signatureProvider(result)
-        if (signature == null) {
-            currentSignature = null
-            streak = 0
-            return ScanConsensusDecision.Pending(streak = 0, required = requiredFrames)
-        }
-        if (signature == currentSignature) {
-            streak += 1
-        } else {
-            currentSignature = signature
-            streak = 1
-        }
-        if (streak < requiredFrames) {
-            return ScanConsensusDecision.Pending(streak = streak, required = requiredFrames)
-        }
-        if (signature == lockedSignature) {
+            ?: return ScanConsensusDecision.Pending(streak = 0, required = requiredFrames)
+        if (signature in lockedSignatures) {
             return ScanConsensusDecision.AlreadyLocked(signature)
         }
-        lockedSignature = signature
+        val count = (counts[signature] ?: 0) + 1
+        counts[signature] = count
+        if (count < requiredFrames) {
+            return ScanConsensusDecision.Pending(streak = count, required = requiredFrames)
+        }
+        lockedSignatures += signature
         return ScanConsensusDecision.Locked(signature = signature, result = result)
     }
 
     fun reset() {
-        currentSignature = null
-        streak = 0
-        lockedSignature = null
+        counts.clear()
+        lockedSignatures.clear()
     }
 
     companion object {
         fun signatureOf(result: AndroidOmrResult): String? {
             if (!result.success) return null
             val score = result.score ?: return null
-            val answers = result.answerArea?.questions
-                ?.sortedBy { it.questionIndex }
-                ?.joinToString(";") { question ->
-                    "${question.questionIndex}:${question.selectedLabels.joinToString(",")}"
-                }
-                ?: return null
             val admission = result.admissionNumber?.digits.orEmpty()
-            return "$admission|$answers|${score.totalScore}/${score.maxScore}"
+            return "$admission|${score.totalScore}/${score.maxScore}"
         }
     }
 }

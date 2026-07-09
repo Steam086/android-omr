@@ -49,44 +49,54 @@ class ScanConsensusTrackerTest {
     }
 
     @Test
-    fun locksAfterThreeConsecutiveIdenticalFrames() {
+    fun locksAfterThreeConsistentFrames() {
         val tracker = ScanConsensusTracker()
-        assertTrue(tracker.offer(result()) is ScanConsensusDecision.Pending)
-        assertTrue(tracker.offer(result()) is ScanConsensusDecision.Pending)
-        val third = tracker.offer(result())
-        assertTrue(third is ScanConsensusDecision.Locked)
-    }
-
-    @Test
-    fun failureFrameResetsStreak() {
-        val tracker = ScanConsensusTracker()
-        tracker.offer(result())
-        tracker.offer(result())
-        tracker.offer(result(success = false))
         assertTrue(tracker.offer(result()) is ScanConsensusDecision.Pending)
         assertTrue(tracker.offer(result()) is ScanConsensusDecision.Pending)
         assertTrue(tracker.offer(result()) is ScanConsensusDecision.Locked)
     }
 
     @Test
-    fun alternatingSignaturesNeverLock() {
+    fun failedFramesDoNotResetAccumulation() {
         val tracker = ScanConsensusTracker()
-        repeat(5) {
-            assertTrue(tracker.offer(result(totalScore = 4.0)) is ScanConsensusDecision.Pending)
-            assertTrue(tracker.offer(result(totalScore = 6.0)) is ScanConsensusDecision.Pending)
-        }
+        assertTrue(tracker.offer(result()) is ScanConsensusDecision.Pending)
+        assertTrue(tracker.offer(result()) is ScanConsensusDecision.Pending)
+        // A failed frame in the middle must be a no-op, not a reset.
+        assertTrue(tracker.offer(result(success = false)) is ScanConsensusDecision.Pending)
+        assertTrue(tracker.offer(result()) is ScanConsensusDecision.Locked)
     }
 
     @Test
-    fun sameSignatureAfterLockDoesNotRetrigger() {
+    fun nonConsecutiveSameScoreAccumulatesAndLocks() {
+        val tracker = ScanConsensusTracker()
+        // The correct score (4.0) shows on frames 1/3/5; noise (6.0) on 2/4. Dominant score locks.
+        assertTrue(tracker.offer(result(totalScore = 4.0)) is ScanConsensusDecision.Pending)
+        assertTrue(tracker.offer(result(totalScore = 6.0)) is ScanConsensusDecision.Pending)
+        assertTrue(tracker.offer(result(totalScore = 4.0)) is ScanConsensusDecision.Pending)
+        assertTrue(tracker.offer(result(totalScore = 6.0)) is ScanConsensusDecision.Pending)
+        val locked = tracker.offer(result(totalScore = 4.0))
+        assertTrue(locked is ScanConsensusDecision.Locked)
+        assertTrue((locked as ScanConsensusDecision.Locked).signature.contains("4.0/10.0"))
+    }
+
+    @Test
+    fun signatureIgnoresPerQuestionAnswerJitter() {
+        val tracker = ScanConsensusTracker()
+        // Same admission and same score, but per-question reads jitter each frame.
+        assertTrue(tracker.offer(result(answers = listOf(0 to listOf("A"), 1 to listOf("B")))) is ScanConsensusDecision.Pending)
+        assertTrue(tracker.offer(result(answers = listOf(0 to listOf("A"), 1 to listOf("C")))) is ScanConsensusDecision.Pending)
+        assertTrue(tracker.offer(result(answers = listOf(0 to listOf("D"), 1 to listOf("B")))) is ScanConsensusDecision.Locked)
+    }
+
+    @Test
+    fun sameSignatureAfterLockReturnsAlreadyLocked() {
         val tracker = ScanConsensusTracker()
         repeat(3) { tracker.offer(result()) }
-        val next = tracker.offer(result())
-        assertTrue(next is ScanConsensusDecision.AlreadyLocked)
+        assertTrue(tracker.offer(result()) is ScanConsensusDecision.AlreadyLocked)
     }
 
     @Test
-    fun newCardLocksAgainAutomatically() {
+    fun newCardWithDifferentAdmissionLocksIndependently() {
         val tracker = ScanConsensusTracker()
         repeat(3) { tracker.offer(result(admission = "1234")) }
         repeat(2) { assertTrue(tracker.offer(result(admission = "5678")) is ScanConsensusDecision.Pending) }
