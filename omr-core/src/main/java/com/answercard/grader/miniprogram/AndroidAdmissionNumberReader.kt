@@ -80,6 +80,7 @@ object AndroidAdmissionNumberReader {
         debugInfo += solidMarkDebugInfo
 
         val candidates = mutableListOf<AndroidAdmissionNumberCandidate>()
+        val solidMarkedCandidatesByDigit = mutableMapOf<Int, MutableSet<Int>>()
         var solidOnlyMarks = 0
         var bubbleOnlyMarks = 0
         var bothMarks = 0
@@ -104,6 +105,9 @@ object AndroidAdmissionNumberReader {
             if (solidMarked && bubbleMarked) bothMarks += 1
             if (solidMarked && !bubbleMarked) solidOnlyMarks += 1
             if (!solidMarked && bubbleMarked) bubbleOnlyMarks += 1
+            if (solidMarked) {
+                solidMarkedCandidatesByDigit.getOrPut(mapping.digitIndex) { mutableSetOf() } += mapping.numberValue
+            }
             val effectiveReadResult = bubbleReadResult.copy(isMarked = bubbleMarked || solidMarked)
 
             candidates += AndroidAdmissionNumberCandidate(
@@ -132,7 +136,24 @@ object AndroidAdmissionNumberReader {
                         failureReason = "digit must contain 10 candidates",
                     )
                 } else {
-                    buildDigitResult(digitIndex, sortedCandidates)
+                    val digitResult = buildDigitResult(digitIndex, sortedCandidates)
+                    val preferredSolidCandidate = solidMarkedCandidatesByDigit[digitIndex]
+                        .orEmpty()
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { solidNumbers ->
+                            sortedCandidates
+                                .filter { it.numberValue in solidNumbers }
+                                .maxWithOrNull(
+                                    compareBy<AndroidAdmissionNumberCandidate> { it.readResult.centralBlackCount }
+                                        .thenBy { it.readResult.cleanedTotalBlackCount }
+                                        .thenBy { it.readResult.totalBlackCount },
+                                )
+                        }
+                    if (preferredSolidCandidate != null && digitResult.selectedNumber != preferredSolidCandidate.numberValue) {
+                        digitResult.copy(selectedNumber = preferredSolidCandidate.numberValue)
+                    } else {
+                        digitResult
+                    }
                 }
             }
 

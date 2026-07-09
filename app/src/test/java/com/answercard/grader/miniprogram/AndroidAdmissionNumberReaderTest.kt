@@ -215,9 +215,8 @@ class AndroidAdmissionNumberReaderTest {
         )
 
         assertTrue(result.success)
+        assertEquals(7, result.digitResults[0].selectedNumber)
         assertTrue(result.digitResults[0].isMultiMarked)
-        assertTrue(result.digitResults[0].candidates.single { it.numberValue == 1 }.readResult.isMarked)
-        assertTrue(result.digitResults[0].candidates.single { it.numberValue == 7 }.readResult.isMarked)
         assertTrue(result.debugInfo.contains("solidFusion=union"))
     }
 
