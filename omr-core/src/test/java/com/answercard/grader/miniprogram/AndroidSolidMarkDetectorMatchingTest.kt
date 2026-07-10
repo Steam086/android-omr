@@ -127,6 +127,32 @@ class AndroidSolidMarkDetectorMatchingTest {
         assertTrue(decision.ambiguous)
     }
 
+    @Test
+    fun pointInsideBoundingBoxButOutsideSkewedProjectedCellMatchesNothing() {
+        val skewed = MiniProgramCell(
+            row = 0,
+            column = 0,
+            leftTop = MiniProgramGridPoint(row = 30.0, column = 30.0),
+            rightTop = MiniProgramGridPoint(row = 30.0, column = 50.0),
+            leftBottom = MiniProgramGridPoint(row = 50.0, column = 40.0),
+            rightBottom = MiniProgramGridPoint(row = 50.0, column = 60.0),
+        )
+        val cells = AndroidPaperProjectedCells(
+            questionCells = mapOf(AndroidPaperQuestionCellKey(0, 0) to skewed),
+            admissionNumberCells = emptyMap(),
+            debugInfo = emptyList(),
+        )
+
+        val decision = AndroidSolidMarkDetector.matchProjectedQuestionCell(
+            projectedCells = cells,
+            row = 49.0,
+            column = 31.0,
+        )
+
+        assertNull(decision.match)
+        assertFalse(decision.ambiguous)
+    }
+
     private fun rectangularCell(left: Double, top: Double) = MiniProgramCell(
         row = 0,
         column = 0,
