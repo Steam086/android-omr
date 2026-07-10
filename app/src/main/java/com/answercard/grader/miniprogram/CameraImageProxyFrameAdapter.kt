@@ -1,7 +1,6 @@
 package com.answercard.grader.miniprogram
 
 import androidx.camera.core.ImageProxy
-import java.nio.ByteBuffer
 
 object CameraImageProxyFrameAdapter {
     fun fromImageProxy(
@@ -30,7 +29,7 @@ object CameraImageProxyFrameAdapter {
                     cropHeight = cropHeight,
                     orientationMode = orientationMode,
                 ),
-                yData = yPlane.buffer.toByteArrayFromStart(),
+                yData = yPlane.buffer,
             ),
         )
     }
@@ -79,10 +78,4 @@ object CameraImageProxyFrameAdapter {
 
     private fun rotatedHeight(width: Int, height: Int, rotationDegrees: Int): Int =
         if (rotationDegrees == 90 || rotationDegrees == 270) width else height
-
-    private fun ByteBuffer.toByteArrayFromStart(): ByteArray {
-        val copy = duplicate()
-        copy.rewind()
-        return ByteArray(copy.remaining()).also(copy::get)
-    }
 }

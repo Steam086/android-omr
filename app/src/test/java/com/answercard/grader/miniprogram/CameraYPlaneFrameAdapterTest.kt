@@ -1,5 +1,6 @@
 package com.answercard.grader.miniprogram
 
+import java.nio.ByteBuffer
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -139,11 +140,21 @@ class CameraYPlaneFrameAdapterTest {
                 cropWidth = 2,
                 cropHeight = 1,
                 rotationDegrees = 0,
-                yData = byteArrayOf(200.toByte(), 255.toByte()),
+                yData = ByteBuffer.wrap(byteArrayOf(200.toByte(), 255.toByte())),
             ),
         )
 
         assertFrame(frame, width = 2, height = 1, pixels = intArrayOf(200, 255))
+    }
+
+    @Test
+    fun conversionDoesNotChangeInputBufferPosition() {
+        val input = inputForRotation(rotationDegrees = 90)
+        input.yData.position(2)
+
+        CameraYPlaneFrameAdapter.toMiniProgramFrame(input)
+
+        assertEquals(2, input.yData.position())
     }
 
     private fun inputForRotation(rotationDegrees: Int): YPlaneFrameInput =
@@ -171,6 +182,6 @@ class CameraYPlaneFrameAdapterTest {
         assertArrayEquals(pixels, frame.pixels)
     }
 
-    private fun bytes(vararg values: Int): ByteArray =
-        ByteArray(values.size) { index -> values[index].toByte() }
+    private fun bytes(vararg values: Int): ByteBuffer =
+        ByteBuffer.wrap(ByteArray(values.size) { index -> values[index].toByte() })
 }

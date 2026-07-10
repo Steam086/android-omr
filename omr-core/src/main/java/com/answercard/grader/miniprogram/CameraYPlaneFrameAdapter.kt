@@ -1,5 +1,7 @@
 package com.answercard.grader.miniprogram
 
+import java.nio.ByteBuffer
+
 data class YPlaneFrameInput(
     val width: Int,
     val height: Int,
@@ -10,63 +12,45 @@ data class YPlaneFrameInput(
     val cropWidth: Int,
     val cropHeight: Int,
     val rotationDegrees: Int,
-    val yData: ByteArray,
+    val yData: ByteBuffer,
 )
 
 object CameraYPlaneFrameAdapter {
     fun toMiniProgramFrame(input: YPlaneFrameInput): MiniProgramFrame {
         validate(input)
-        val cropped = crop(input)
-        val rotated = rotate(
-            pixels = cropped,
-            width = input.cropWidth,
-            height = input.cropHeight,
-            rotationDegrees = input.rotationDegrees,
-        )
-        return MiniProgramFrame(
-            width = if (input.rotationDegrees == 90 || input.rotationDegrees == 270) input.cropHeight else input.cropWidth,
-            height = if (input.rotationDegrees == 90 || input.rotationDegrees == 270) input.cropWidth else input.cropHeight,
-            pixels = rotated,
-        )
-    }
-
-    private fun crop(input: YPlaneFrameInput): IntArray {
-        val pixels = IntArray(input.cropWidth * input.cropHeight)
-        var outputIndex = 0
+        val outputWidth = if (input.rotationDegrees == 90 || input.rotationDegrees == 270) {
+            input.cropHeight
+        } else {
+            input.cropWidth
+        }
+        val outputHeight = if (input.rotationDegrees == 90 || input.rotationDegrees == 270) {
+            input.cropWidth
+        } else {
+            input.cropHeight
+        }
+        val output = IntArray(outputWidth * outputHeight)
+        val source = input.yData.duplicate().apply { rewind() }
         for (row in 0 until input.cropHeight) {
             val sourceRow = input.cropTop + row
             for (column in 0 until input.cropWidth) {
                 val sourceColumn = input.cropLeft + column
                 val sourceIndex = sourceRow * input.rowStride + sourceColumn * input.pixelStride
-                pixels[outputIndex++] = input.yData[sourceIndex].toInt() and 0xff
-            }
-        }
-        return pixels
-    }
-
-    private fun rotate(
-        pixels: IntArray,
-        width: Int,
-        height: Int,
-        rotationDegrees: Int,
-    ): IntArray {
-        val outputWidth = if (rotationDegrees == 90 || rotationDegrees == 270) height else width
-        val outputHeight = if (rotationDegrees == 90 || rotationDegrees == 270) width else height
-        val output = IntArray(outputWidth * outputHeight)
-        for (row in 0 until height) {
-            for (column in 0 until width) {
-                val value = pixels[row * width + column]
-                val target = when (rotationDegrees) {
-                    0 -> row to column
-                    90 -> column to (height - 1 - row)
-                    180 -> (height - 1 - row) to (width - 1 - column)
-                    270 -> (width - 1 - column) to row
-                    else -> error("unsupported rotation")
+                val targetIndex = when (input.rotationDegrees) {
+                    0 -> row * outputWidth + column
+                    90 -> column * outputWidth + (input.cropHeight - 1 - row)
+                    180 -> (input.cropHeight - 1 - row) * outputWidth +
+                        (input.cropWidth - 1 - column)
+                    270 -> (input.cropWidth - 1 - column) * outputWidth + row
+                    else -> error("validated rotation")
                 }
-                output[target.first * outputWidth + target.second] = value
+                output[targetIndex] = source.get(sourceIndex).toInt() and 0xff
             }
         }
-        return output
+        return MiniProgramFrame(
+            width = outputWidth,
+            height = outputHeight,
+            pixels = output,
+        )
     }
 
     private fun validate(input: YPlaneFrameInput) {
@@ -85,6 +69,6 @@ object CameraYPlaneFrameAdapter {
         }
         val lastRowStart = (input.height - 1) * input.rowStride
         val lastPixelOffset = (input.width - 1) * input.pixelStride
-        require(input.yData.size > lastRowStart + lastPixelOffset) { "yData is too small for frame strides" }
+        require(input.yData.limit() > lastRowStart + lastPixelOffset) { "yData is too small for frame strides" }
     }
 }
