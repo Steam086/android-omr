@@ -381,15 +381,16 @@ class AndroidOmrImageAnalyzerTest {
     }
 
     @Test
-    fun analyzeWaitsForAutofocusBeforeAdaptingFrame() {
-        var adapterCount = 0
+    fun analyzeContinuesWhileAutofocusIsScanning() {
+        var processCount = 0
         var received: AndroidOmrResult? = null
         val analyzer = AndroidOmrImageAnalyzer(
             templateProvider = { TemplateState.default() },
             onResult = { received = it },
-            frameAdapter = {
-                adapterCount++
-                MiniProgramFrame(width = 1, height = 1, pixels = intArrayOf(255))
+            frameAdapter = { crispFrame(marker = 40) },
+            processor = AndroidOmrFrameProcessor { _, _ ->
+                processCount++
+                result(success = true)
             },
             captureMetadataProvider = {
                 FrameCaptureMetadata(
@@ -406,9 +407,64 @@ class AndroidOmrImageAnalyzerTest {
 
         analyzer.analyze(FakeImageProxy(timestamp = 42L))
 
-        assertEquals(0, adapterCount)
-        assertEquals(ScanRejectionReason.WAIT_FOCUS, received?.rejectionReason)
+        assertEquals(1, processCount)
         assertTrue(received?.debugInfo.orEmpty().contains("afState=SCANNING"))
+        assertTrue(received?.debugInfo.orEmpty().contains("captureGateAccepted=false"))
+        assertTrue(received?.debugInfo.orEmpty().contains("captureGateRejection=WAIT_FOCUS"))
+    }
+
+    @Test
+    fun analyzeContinuesWhileExposureIsSearching() {
+        var processCount = 0
+        var received: AndroidOmrResult? = null
+        val analyzer = AndroidOmrImageAnalyzer(
+            templateProvider = { TemplateState.default() },
+            onResult = { received = it },
+            frameAdapter = { crispFrame(marker = 40) },
+            processor = AndroidOmrFrameProcessor { _, _ ->
+                processCount++
+                result(success = true)
+            },
+            captureMetadataProvider = {
+                FrameCaptureMetadata(
+                    timestampNs = it,
+                    focusState = CameraFocusState.FOCUSED,
+                    exposureState = CameraExposureState.SEARCHING,
+                    focusRequired = true,
+                    exposureRequired = true,
+                    exposureTimeNs = 10_000_000L,
+                    iso = 100,
+                )
+            },
+        )
+
+        analyzer.analyze(FakeImageProxy(timestamp = 42L))
+
+        assertEquals(1, processCount)
+        assertTrue(received?.debugInfo.orEmpty().contains("aeState=SEARCHING"))
+        assertTrue(received?.debugInfo.orEmpty().contains("captureGateAccepted=false"))
+        assertTrue(received?.debugInfo.orEmpty().contains("captureGateRejection=WAIT_EXPOSURE"))
+    }
+
+    @Test
+    fun analyzeContinuesWhileDeviceIsMoving() {
+        var processCount = 0
+        var received: AndroidOmrResult? = null
+        val analyzer = AndroidOmrImageAnalyzer(
+            templateProvider = { TemplateState.default() },
+            onResult = { received = it },
+            frameAdapter = { crispFrame(marker = 40) },
+            processor = AndroidOmrFrameProcessor { _, _ ->
+                processCount++
+                result(success = true)
+            },
+            isDeviceStableProvider = { false },
+        )
+
+        analyzer.analyze(FakeImageProxy())
+
+        assertEquals(1, processCount)
+        assertTrue(received?.debugInfo.orEmpty().contains("deviceStable=false"))
     }
 
     @Test

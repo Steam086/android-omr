@@ -183,8 +183,8 @@ fun ScanScreen(
                 }
             },
             options = AndroidOmrAnalyzerOptions(
-                minAnalyzeIntervalMs = 0L,
-                candidateWindowMs = 450L,
+                minAnalyzeIntervalMs = 250L,
+                candidateWindowMs = 0L,
                 analysisOrientationMode = analysisOrientationMode,
                 requestedAnalysisResolutionLabel = CameraAnalysisConfig.RequestedResolutionLabel,
             ),

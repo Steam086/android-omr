@@ -71,30 +71,6 @@ class AndroidOmrImageAnalyzer(
                         "captureGateAccepted=${captureGate.accepted}",
                         "captureGateRejection=${captureGate.rejectionReason?.name ?: "none"}",
                     )
-            if (!deviceStable) {
-                clearCandidateWindow()
-                emitRejection(
-                    reason = ScanRejectionReason.WAIT_STABILITY,
-                    message = "device is moving",
-                    debugInfo = imageDebugInfo + captureDebugInfo + "failureStage=device stability" +
-                        analyzerTimingDebug(analysisStartedAtNs),
-                )
-                return
-            }
-            if (!captureGate.accepted) {
-                clearCandidateWindow()
-                val reason = captureGate.rejectionReason ?: ScanRejectionReason.WAIT_FOCUS
-                emitRejection(
-                    reason = reason,
-                    message = when (reason) {
-                        ScanRejectionReason.WAIT_EXPOSURE -> "camera exposure is converging"
-                        else -> "camera is focusing"
-                    },
-                    debugInfo = imageDebugInfo + captureDebugInfo + "failureStage=capture convergence" +
-                        analyzerTimingDebug(analysisStartedAtNs),
-                )
-                return
-            }
             val frameAdapterStartedAtNs = nanoTimeProvider()
             val frame = frameAdapter?.invoke(image)
                 ?: CameraImageProxyFrameAdapter.fromImageProxy(
