@@ -50,7 +50,7 @@ class AndroidAnswerAreaReaderTest {
     @Test
     fun rejectsLowContrastAdaptiveThresholdArtifact() {
         val fixture = Fixture(questionCount = 1, backgroundValue = 200)
-        fixture.mark(questionIndex = 0, optionIndex = 1, markSize = 9, value = 179)
+        fixture.mark(questionIndex = 0, optionIndex = 1, markSize = 11, value = 179)
 
         val result = AndroidAnswerAreaReader.read(fixture.frame(), fixture.grid, fixture.layout)
 
@@ -169,8 +169,8 @@ class AndroidAnswerAreaReaderTest {
     @Test
     fun singleChoiceStillSelectsStrongestMarkedOptionAndRecordsAmbiguity() {
         val fixture = Fixture(questionCount = 1)
-        fixture.mark(questionIndex = 0, optionIndex = 0, markSize = 9)
-        fixture.mark(questionIndex = 0, optionIndex = 1, markSize = 12)
+        fixture.mark(questionIndex = 0, optionIndex = 0, markSize = 12)
+        fixture.mark(questionIndex = 0, optionIndex = 1, markSize = 14)
 
         val result = AndroidAnswerAreaReader.read(
             frame = fixture.frame(),
@@ -301,10 +301,10 @@ class AndroidAnswerAreaReaderTest {
 
         init {
             grid = MiniProgramGridBuilder.build(
-                lu = MiniProgramPoint(row = 0, column = 0),
-                ld = MiniProgramPoint(row = height - 1, column = 0),
-                ru = MiniProgramPoint(row = 0, column = width - 1),
-                rd = MiniProgramPoint(row = height - 1, column = width - 1),
+                lu = MiniProgramPoint(row = 1, column = 1),
+                ld = MiniProgramPoint(row = height - 2, column = 1),
+                ru = MiniProgramPoint(row = 1, column = width - 2),
+                rd = MiniProgramPoint(row = height - 2, column = width - 2),
                 rows = layout.gridRows,
                 columns = layout.gridColumns,
             )
