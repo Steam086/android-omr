@@ -10,7 +10,12 @@ data class MiniProgramCellSourceMetrics(
     val height: Double,
     val area: Double,
     val insideFrame: Boolean,
-)
+) {
+    val hasEnoughSourceInformation: Boolean
+        get() = width + 1e-6 >= MiniProgramCellSampler.MIN_SOURCE_WIDTH &&
+            height + 1e-6 >= MiniProgramCellSampler.MIN_SOURCE_HEIGHT &&
+            area + 1e-6 >= MiniProgramCellSampler.MIN_SOURCE_AREA
+}
 
 data class MiniProgramCellSample(
     val rows: Int,

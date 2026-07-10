@@ -20,6 +20,22 @@ import org.junit.Test
 
 class ScanDisplayResultTest {
     @Test
+    fun mapsClippedCardToMoveSlightlyFartherMessage() {
+        val rejected = androidResult(
+            success = false,
+            examId = null,
+            totalScore = null,
+            maxScore = null,
+            failureReason = "required cells are clipped by analysis frame",
+        ).copy(rejectionReason = ScanRejectionReason.RETAKE_CARD_CLIPPED)
+
+        val display = ScanDisplayResult.fromAndroidOmrResult(rejected)
+
+        assertEquals("请稍微远离，确保答题区域完整。", display.friendlyMessage)
+        assertEquals(null, display.scoreText)
+    }
+
+    @Test
     fun mapsLowAnalysisResolutionToMoveCloserMessage() {
         val rejected = androidResult(
             success = false,

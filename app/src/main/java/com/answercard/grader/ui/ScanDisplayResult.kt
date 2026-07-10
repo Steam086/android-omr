@@ -133,6 +133,8 @@ data class ScanDisplayResult(
                     "旧卡定位有歧义，请调整角度和光线后重拍。"
                 rejectionReason == ScanRejectionReason.RETAKE_CARD_GEOMETRY ->
                     "答题卡位置或透视不可靠，请对正后重拍。"
+                rejectionReason == ScanRejectionReason.RETAKE_CARD_CLIPPED ->
+                    "请稍微远离，确保答题区域完整。"
                 rejectionReason == ScanRejectionReason.RETAKE_CELL_SIZE ->
                     "答题卡距离过远，请靠近后重拍。"
                 rejectionReason == ScanRejectionReason.RETAKE_READ ->
