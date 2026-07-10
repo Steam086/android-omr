@@ -415,7 +415,7 @@ Confirm `/data/Sources/android-omr` points at the same commit and has no unrelat
 - [ ] **Step 2: Run core and app unit tests with JDK 21**
 
 ```sh
-ssh -p 30677 fedora 'cd /data/Sources/android-omr && \
+ssh -p 22 fedora 'cd /data/Sources/android-omr && \
   export JAVA_HOME=/usr/lib/jvm/java-21-openjdk ANDROID_HOME=/data/local/android-sdk ANDROID_SDK_ROOT=/data/local/android-sdk && \
   export PATH=$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH && \
   sh gradlew :omr-core:test && sh gradlew test'
@@ -426,7 +426,7 @@ Expected: both commands exit 0.
 - [ ] **Step 3: Build the debug APK**
 
 ```sh
-ssh -p 30677 fedora 'cd /data/Sources/android-omr && \
+ssh -p 22 fedora 'cd /data/Sources/android-omr && \
   export JAVA_HOME=/usr/lib/jvm/java-21-openjdk ANDROID_HOME=/data/local/android-sdk ANDROID_SDK_ROOT=/data/local/android-sdk && \
   export PATH=$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH && \
   sh gradlew assembleDebug'
