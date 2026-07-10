@@ -261,8 +261,8 @@ class DesktopQ11FlipProbeTest {
     private fun findRootFile(fileName: String): File {
         var directory: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
         while (directory != null) {
-            val candidate = File(directory, fileName)
-            if (candidate.isFile) return candidate
+            val candidates = listOf(File(directory, "images/$fileName"), File(directory, fileName))
+            candidates.firstOrNull { it.isFile }?.let { return it }
             directory = directory.parentFile
         }
         return File(fileName)

@@ -117,14 +117,14 @@ fun ScanScreen(
             templateProvider = { template },
             onResult = { result ->
                 mainHandler.post {
-                    displayResult = ScanDisplayResult.fromAndroidOmrResult(result, template)
-                    status = if (result.success) "已识别" else "未识别"
                     when (val decision = consensusTracker.offer(result)) {
                         is ScanConsensusDecision.Locked -> {
                             val score = decision.result.score
                             val examId = decision.result.admissionNumber?.digits.orEmpty()
                             val examIdReady = examId.isNotBlank() || !template.showHeader
                             if (score != null && examIdReady) {
+                                displayResult = ScanDisplayResult.fromAndroidOmrResult(decision.result, template)
+                                status = "已识别"
                                 lockedScoreText = "${score.totalScore.roundToInt()}/${score.maxScore.roundToInt()}"
                                 recordStore.saveRecord(
                                     ScanRecord(
@@ -147,23 +147,27 @@ fun ScanScreen(
                                 }
                             }
                         }
-                        is ScanConsensusDecision.Pending,
-                        is ScanConsensusDecision.AlreadyLocked,
-                        -> Unit
+                        is ScanConsensusDecision.Pending -> {
+                            if (lockedScoreText == null) {
+                                status = if (decision.streak > 0) {
+                                    "确认中 ${decision.streak}/${decision.required}"
+                                } else {
+                                    "未识别"
+                                }
+                            }
+                        }
+                        is ScanConsensusDecision.AlreadyLocked -> status = "已识别"
+                        ScanConsensusDecision.CardCleared -> {
+                            displayResult = null
+                            lockedScoreText = null
+                            status = "扫描中"
+                        }
                     }
                 }
             },
-            onError = { error ->
+            onError = {
                 mainHandler.post {
-                    displayResult = ScanDisplayResult(
-                        isRecognized = false,
-                        examId = null,
-                        scoreText = null,
-                        failureReason = error.message ?: error::class.java.simpleName,
-                        friendlyMessage = null,
-                        debugInfo = emptyList(),
-                    )
-                    status = "识别出错"
+                    if (lockedScoreText == null) status = "识别出错"
                 }
             },
             options = AndroidOmrAnalyzerOptions(

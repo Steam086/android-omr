@@ -55,13 +55,13 @@
 
 ### 5. 多帧共识（ScanConsensusTracker + ScanScreen 接入）
 
-- 新增 `ScanConsensusTracker(requiredFrames = 3)`（omr-core，纯 Kotlin）：
-  - 签名 = 学号 + 逐题选项标签（比只比分数更严格）。
-  - 仅成功帧参与；连续 3 帧签名一致 → 触发一次锁定回调。
-  - 已锁定签名重复出现不再触发；**不同**签名连续 3 帧一致 → 自动锁定下一张（整叠连扫）。
-  - 失败帧重置连续计数，不影响已锁定状态。
-- `ScanScreen`：锁定时大字显示分数 → `recordStore.saveRecord` → `ScoreSpeaker` TTS 播报，
-  每张卡一次；替换现有 `lastHandledKey` 首帧即采信逻辑。
+- `ScanConsensusTracker`（omr-core，纯 Kotlin）：
+  - 签名 = 学号 + 逐题选项标签 + 分数，避免不同答题结果只因同分而被合并。
+  - 最近 5 个合格帧中至少 4 帧一致才锁定；超过 2 秒的样本自动过期。
+  - 一张卡锁定后，任何其他读数都不能覆盖；连续 900ms 检测不到角标才开始下一张。
+  - 失败但仍检测到角标的帧不清空进度，也不会计入共识。
+- `ScanScreen`：确认阶段只显示进度，不展示单帧分数；锁定后才显示答题结果、大字分数、
+  保存记录并触发 TTS。检测到卡片移开后清空锁定展示。
 
 ### 6. 陀螺仪防抖门（DeviceStabilityMonitor + 分析器网关）
 
