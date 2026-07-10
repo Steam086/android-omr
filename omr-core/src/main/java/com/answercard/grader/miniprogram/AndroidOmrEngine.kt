@@ -91,6 +91,7 @@ object AndroidOmrEngine {
             )
         }
         val projectedCells = AndroidPaperProjectedCellBuilder.build(
+            frame = frame,
             template = template,
             layout = layout,
             anchors = anchors,
@@ -137,6 +138,7 @@ object AndroidOmrEngine {
             frame = frame,
             template = template,
             anchors = anchors,
+            projectedCells = projectedCells,
         )
         if (solidMarks.isReferenceAmbiguous) {
             return AndroidOmrResult.rejected(

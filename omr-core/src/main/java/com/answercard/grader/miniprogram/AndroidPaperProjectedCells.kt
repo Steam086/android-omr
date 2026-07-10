@@ -30,6 +30,7 @@ data class AndroidPaperAdmissionNumberCellKey(
 
 object AndroidPaperProjectedCellBuilder {
     fun build(
+        frame: MiniProgramFrame,
         template: TemplateState,
         layout: AndroidPaperTemplateLayout,
         anchors: MiniProgramAnchors,
@@ -57,7 +58,7 @@ object AndroidPaperProjectedCellBuilder {
                 projector.cell(mapping.row, mapping.column, TemplateGeometry.renderedRect(rect))
         }
 
-        return AndroidPaperProjectedCells(
+        val baseline = AndroidPaperProjectedCells(
             questionCells = questionCells,
             admissionNumberCells = admissionNumberCells,
             debugInfo = listOf(
@@ -66,6 +67,7 @@ object AndroidPaperProjectedCellBuilder {
                 "admissionNumberCells=${admissionNumberCells.size}",
             ),
         )
+        return ProjectedCellEdgeRefiner.refine(frame, baseline)
     }
 }
 
