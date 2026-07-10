@@ -17,6 +17,7 @@ class AndroidOmrImageAnalyzer(
     private val options: AndroidOmrAnalyzerOptions = AndroidOmrAnalyzerOptions(),
     private val frameAdapter: ((ImageProxy) -> MiniProgramFrame)? = null,
     private val nowMsProvider: () -> Long = System::currentTimeMillis,
+    private val nanoTimeProvider: () -> Long = System::nanoTime,
     private val captureMetadataProvider: (Long) -> FrameCaptureMetadata? = { null },
     private val isDeviceStableProvider: () -> Boolean = { true },
     private val qualityEvaluator: FrameQualityEvaluator = FrameQualityEvaluator(FrameQualityThresholds.PRE_OMR),
@@ -34,6 +35,7 @@ class AndroidOmrImageAnalyzer(
     private var bestCandidate: FrameCandidate? = null
 
     override fun analyze(image: ImageProxy) {
+        val analysisStartedAtNs = nanoTimeProvider()
         val currentFrameIndex = frameIndex.incrementAndGet()
         val processedAtMs = nowMsProvider()
         when (val gateDecision = tryEnterAnalysis(processedAtMs)) {
@@ -60,17 +62,25 @@ class AndroidOmrImageAnalyzer(
                 processedAtMs = processedAtMs,
                 droppedReason = "processed",
             )
-            val captureDebugInfo = metadata?.debugInfo() ?: listOf("captureMetadata=unavailable")
-            if (!isDeviceStableProvider()) {
+            val deviceStable = isDeviceStableProvider()
+            val captureGate = CaptureStateEvaluator.evaluate(metadata)
+            val captureDebugInfo =
+                (metadata?.debugInfo() ?: listOf("captureMetadata=unavailable")) +
+                    listOf(
+                        "deviceStable=$deviceStable",
+                        "captureGateAccepted=${captureGate.accepted}",
+                        "captureGateRejection=${captureGate.rejectionReason?.name ?: "none"}",
+                    )
+            if (!deviceStable) {
                 clearCandidateWindow()
                 emitRejection(
                     reason = ScanRejectionReason.WAIT_STABILITY,
                     message = "device is moving",
-                    debugInfo = imageDebugInfo + captureDebugInfo + "failureStage=device stability",
+                    debugInfo = imageDebugInfo + captureDebugInfo + "failureStage=device stability" +
+                        analyzerTimingDebug(analysisStartedAtNs),
                 )
                 return
             }
-            val captureGate = CaptureStateEvaluator.evaluate(metadata)
             if (!captureGate.accepted) {
                 clearCandidateWindow()
                 val reason = captureGate.rejectionReason ?: ScanRejectionReason.WAIT_FOCUS
@@ -80,20 +90,28 @@ class AndroidOmrImageAnalyzer(
                         ScanRejectionReason.WAIT_EXPOSURE -> "camera exposure is converging"
                         else -> "camera is focusing"
                     },
-                    debugInfo = imageDebugInfo + captureDebugInfo + "failureStage=capture convergence",
+                    debugInfo = imageDebugInfo + captureDebugInfo + "failureStage=capture convergence" +
+                        analyzerTimingDebug(analysisStartedAtNs),
                 )
                 return
             }
+            val frameAdapterStartedAtNs = nanoTimeProvider()
             val frame = frameAdapter?.invoke(image)
                 ?: CameraImageProxyFrameAdapter.fromImageProxy(
                     image = image,
                     orientationMode = options.analysisOrientationMode,
                 )
+            val frameAdapterElapsedMs = elapsedMs(frameAdapterStartedAtNs)
             val template = templateProvider()
             val frameDebugInfo = frame.debugInfo(template)
+            val frameQualityStartedAtNs = nanoTimeProvider()
             val quality = qualityEvaluator.evaluate(frame)
+            val frameQualityElapsedMs = elapsedMs(frameQualityStartedAtNs)
             lastLaplacianVariance.set(quality.metrics.rawLaplacianVariance)
-            val qualityDebugInfo = quality.debugInfo("frame")
+            val qualityDebugInfo = quality.debugInfo("frame") + listOf(
+                "frameAdapterElapsedMs=$frameAdapterElapsedMs",
+                "frameQualityElapsedMs=$frameQualityElapsedMs",
+            )
             if (options.enableFrameQualityGate && !quality.accepted) {
                 clearCandidateWindow()
                 val reason = quality.rejectionReason ?: ScanRejectionReason.RETAKE_BLUR
@@ -104,7 +122,7 @@ class AndroidOmrImageAnalyzer(
                         else -> "frame is too blurry"
                     },
                     debugInfo = imageDebugInfo + captureDebugInfo + frameDebugInfo + qualityDebugInfo +
-                        "failureStage=frame quality",
+                        "failureStage=frame quality" + analyzerTimingDebug(analysisStartedAtNs),
                 )
                 return
             }
@@ -116,12 +134,16 @@ class AndroidOmrImageAnalyzer(
                 debugInfo = imageDebugInfo + captureDebugInfo + frameDebugInfo + qualityDebugInfo,
             )
             val selected = selectCandidate(candidate, processedAtMs) ?: return
+            val omrStartedAtNs = nanoTimeProvider()
             val result = processor.process(frame = selected.frame, template = selected.template)
+            val omrElapsedMs = elapsedMs(omrStartedAtNs)
             onResult(
                 result.copy(
                     debugInfo = selected.debugInfo +
                         "candidateWindowMs=${options.candidateWindowMs}" +
-                        "selectedFrameIndex=${selected.frameIndex}" + result.debugInfo,
+                        "selectedFrameIndex=${selected.frameIndex}" +
+                        "omrElapsedMs=$omrElapsedMs" +
+                        analyzerTimingDebug(analysisStartedAtNs) + result.debugInfo,
                 ),
             )
         } catch (error: Throwable) {
@@ -159,6 +181,12 @@ class AndroidOmrImageAnalyzer(
     ) {
         onResult(AndroidOmrResult.rejected(reason = reason, message = message, debugInfo = debugInfo))
     }
+
+    private fun analyzerTimingDebug(analysisStartedAtNs: Long): String =
+        "analyzerElapsedMs=${elapsedMs(analysisStartedAtNs)}"
+
+    private fun elapsedMs(startedAtNs: Long): Long =
+        ((nanoTimeProvider() - startedAtNs).coerceAtLeast(0L)) / 1_000_000L
 
     private fun tryEnterAnalysis(nowMs: Long): FrameGateDecision {
         if (!busy.compareAndSet(false, true)) return FrameGateDecision.Busy

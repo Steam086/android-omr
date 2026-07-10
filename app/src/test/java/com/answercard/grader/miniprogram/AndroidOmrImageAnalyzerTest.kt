@@ -191,6 +191,45 @@ class AndroidOmrImageAnalyzerTest {
     }
 
     @Test
+    fun analyzeReportsAdvisoryStateAndStageTimings() {
+        var tickNs = 0L
+        var received: AndroidOmrResult? = null
+        val analyzer = AndroidOmrImageAnalyzer(
+            templateProvider = { TemplateState.default() },
+            onResult = { received = it },
+            frameAdapter = { crispFrame(marker = 40) },
+            processor = AndroidOmrFrameProcessor { _, _ -> result(success = true) },
+            options = AndroidOmrAnalyzerOptions(minAnalyzeIntervalMs = 0L),
+            isDeviceStableProvider = { true },
+            captureMetadataProvider = { timestamp ->
+                FrameCaptureMetadata(
+                    timestampNs = timestamp,
+                    focusState = CameraFocusState.FOCUSED,
+                    exposureState = CameraExposureState.CONVERGED,
+                    focusRequired = true,
+                    exposureRequired = true,
+                    exposureTimeNs = 10_000_000L,
+                    iso = 100,
+                )
+            },
+            nanoTimeProvider = {
+                tickNs.also { tickNs += 1_000_000L }
+            },
+        )
+
+        analyzer.analyze(FakeImageProxy(timestamp = 42L))
+
+        val debugInfo = received?.debugInfo.orEmpty()
+        assertTrue(debugInfo.contains("deviceStable=true"))
+        assertTrue(debugInfo.contains("captureGateAccepted=true"))
+        assertTrue(debugInfo.contains("captureGateRejection=none"))
+        assertTrue(debugInfo.any { it.startsWith("frameAdapterElapsedMs=") })
+        assertTrue(debugInfo.any { it.startsWith("frameQualityElapsedMs=") })
+        assertTrue(debugInfo.any { it.startsWith("omrElapsedMs=") })
+        assertTrue(debugInfo.any { it.startsWith("analyzerElapsedMs=") })
+    }
+
+    @Test
     fun analyzeReportsFollowImageRotationOrientationMode() {
         var received: AndroidOmrResult? = null
         val analyzer = AndroidOmrImageAnalyzer(
