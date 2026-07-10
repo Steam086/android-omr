@@ -3,7 +3,10 @@ package com.answercard.grader.miniprogram
 import com.answercard.grader.template.TemplateState
 
 class AndroidOmrFrameProcessor(
-    private val scan: (MiniProgramFrame, TemplateState) -> AndroidOmrResult = AndroidOmrEngine::scan,
+    anchorMode: AnchorMode = AnchorMode.CODED_ONLY,
+    private val scan: (MiniProgramFrame, TemplateState) -> AndroidOmrResult = { frame, template ->
+        AndroidOmrEngine.scan(frame, template, anchorMode)
+    },
 ) {
     fun process(
         frame: MiniProgramFrame,

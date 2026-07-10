@@ -1,9 +1,11 @@
 package com.answercard.grader.miniprogram
 
 import com.answercard.grader.template.CornerMarkerId
+import com.answercard.grader.template.CornerMarkerStyle
 import com.answercard.grader.template.QuestionSetting
 import com.answercard.grader.template.TemplateState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -47,9 +49,27 @@ class CodedMarkerCardScanTest {
         val result = AndroidOmrEngine.scan(renderer.frame(), template())
 
         assertEquals(false, result.success)
-        assertEquals("corner anchors not found", result.failureReason)
-        assertTrue(result.debugInfo.contains("anchorPath=coded-marker-partial"))
+        assertEquals(ScanRejectionReason.RETAKE_CODED_MARKERS, result.rejectionReason)
+        assertNull(result.score)
+        assertTrue(result.debugInfo.contains("anchorPath=coded-marker-rejected"))
         assertTrue(result.debugInfo.any { it == "codedMarkerIds=LU,RU" })
+    }
+
+    @Test
+    fun codedOnlyModeNeverFallsBackToLegacyMarkers() {
+        val renderer = DesktopTemplateCardRenderer(
+            template(),
+            scale = 3f,
+            markerStyle = CornerMarkerStyle.SOLID_SQUARE,
+        )
+        renderer.markAnswer(1, "A")
+
+        val result = AndroidOmrEngine.scan(renderer.frame(), template(), AnchorMode.CODED_ONLY)
+
+        assertEquals(false, result.success)
+        assertEquals(ScanRejectionReason.RETAKE_CODED_MARKERS, result.rejectionReason)
+        assertNull(result.score)
+        assertTrue(result.debugInfo.none { it == "anchorPath=solid-marker" || it == "anchorPath=l-bracket" })
     }
 
     private fun renderedCard(): DesktopTemplateCardRenderer =

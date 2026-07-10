@@ -23,7 +23,7 @@ Keep `omr-core` free of Android, AndroidX, Compose, CameraX, and `android.graphi
 Scan the sample WeChat image without compiling the Android app:
 
 ```bash
-sh gradlew :omr-cli:run --args="微信图片_20260707164730_464_10.png --questions 16 --answers 1:A,2:B,6:C,11:D,16:A --score 2"
+sh gradlew :omr-cli:run --args="../images/微信图片_20260707164730_464_10.png --questions 16 --answers 1:A,2:B,6:C,11:D,16:A --score 2 --legacy"
 ```
 
 Useful options:

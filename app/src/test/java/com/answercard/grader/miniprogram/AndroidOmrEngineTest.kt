@@ -33,7 +33,8 @@ class AndroidOmrEngineTest {
         val result = AndroidOmrEngine.scan(whiteFrame(width = 420, height = 300), template)
 
         assertFalse(result.success)
-        assertEquals("corner anchors not found", result.failureReason)
+        assertEquals("coded markers not reliable", result.failureReason)
+        assertEquals(ScanRejectionReason.RETAKE_CODED_MARKERS, result.rejectionReason)
         assertNotNull(result.layout)
         assertNull(result.grid)
     }

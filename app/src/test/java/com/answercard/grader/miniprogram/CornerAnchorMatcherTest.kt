@@ -15,9 +15,10 @@ class CornerAnchorMatcherTest {
         drawCornerAnchor(frame, MiniProgramCornerKind.RU, row = 44, column = 360)
         drawCornerAnchor(frame, MiniProgramCornerKind.RD, row = 252, column = 358)
 
-        val anchors = CornerAnchorMatcher.findAnchors(frame)
+        val match = CornerAnchorMatcher.findAnchorsWithDiagnostics(frame)
+        val anchors = match.anchors
 
-        requireNotNull(anchors)
+        requireNotNull(anchors) { match.diagnostics.debugInfo().joinToString() }
         assertNear(42, anchors.lu.point.row)
         assertNear(48, anchors.lu.point.column)
         assertNear(250, anchors.ld.point.row)
@@ -59,11 +60,12 @@ class CornerAnchorMatcherTest {
         drawCornerAnchor(frame, MiniProgramCornerKind.RU, row = 72, column = 360)
         drawCornerAnchor(frame, MiniProgramCornerKind.RD, row = 250, column = 358)
 
-        val anchors = CornerAnchorMatcher.findAnchors(frame)
+        val match = CornerAnchorMatcher.findAnchorsWithDiagnostics(frame)
+        val anchors = match.anchors
 
-        assertNotNull(anchors)
-        assertEquals(72, anchors?.lu?.point?.row)
-        assertEquals(78, anchors?.lu?.point?.column)
+        val selected = requireNotNull(anchors) { match.diagnostics.debugInfo().joinToString() }
+        assertNear(72, selected.lu.point.row)
+        assertNear(78, selected.lu.point.column)
     }
 
     @Test
@@ -83,9 +85,10 @@ class CornerAnchorMatcherTest {
         drawCornerAnchor(frame, MiniProgramCornerKind.RU, row = 72, column = 560)
         drawCornerAnchor(frame, MiniProgramCornerKind.RD, row = 410, column = 560)
 
-        val anchors = CornerAnchorMatcher.findAnchors(frame)
+        val match = CornerAnchorMatcher.findAnchorsWithDiagnostics(frame)
+        val anchors = match.anchors
 
-        requireNotNull(anchors)
+        requireNotNull(anchors) { match.diagnostics.debugInfo().joinToString() }
         assertNear(72, anchors.lu.point.row)
         assertNear(78, anchors.lu.point.column)
         assertNear(410, anchors.ld.point.row)
@@ -143,7 +146,7 @@ class CornerAnchorMatcherTest {
         val result = CornerAnchorMatcher.findAnchorsWithDiagnostics(frame)
         val debugInfo = result.diagnostics.debugInfo()
 
-        assertNotNull(result.anchors)
+        assertNotNull(debugInfo.joinToString(), result.anchors)
         assertTrue(debugInfo.any { it.startsWith("bestLU=") })
         assertTrue(debugInfo.any { it.startsWith("bestRU=") })
         assertTrue(debugInfo.any { it.startsWith("bestLD=") })
@@ -177,11 +180,11 @@ class CornerAnchorMatcherTest {
             }
             MiniProgramCornerKind.RU -> {
                 fillRect(frame, row, column - armLength + 1, thickness, armLength, value)
-                fillRect(frame, row, column - armLength + 1, armLength, thickness, value)
+                fillRect(frame, row, column - thickness + 1, armLength, thickness, value)
             }
             MiniProgramCornerKind.RD -> {
                 fillRect(frame, row, column - armLength + 1, thickness, armLength, value)
-                fillRect(frame, row - armLength + thickness, column - armLength + 1, armLength, thickness, value)
+                fillRect(frame, row - armLength + thickness, column - thickness + 1, armLength, thickness, value)
             }
         }
     }

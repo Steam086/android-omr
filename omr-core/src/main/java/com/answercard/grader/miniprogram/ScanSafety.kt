@@ -1,0 +1,21 @@
+package com.answercard.grader.miniprogram
+
+enum class AnchorMode {
+    CODED_ONLY,
+    LEGACY,
+}
+
+enum class ScanRejectionReason {
+    WAIT_STABILITY,
+    WAIT_FOCUS,
+    WAIT_EXPOSURE,
+    RETAKE_BLUR,
+    RETAKE_EXPOSURE,
+    RETAKE_CODED_MARKERS,
+    RETAKE_LEGACY_MARKERS,
+    LEGACY_ANCHOR_AMBIGUOUS,
+    RETAKE_CARD_GEOMETRY,
+    RETAKE_CELL_SIZE,
+    RETAKE_READ,
+    INVALID_TEMPLATE,
+}

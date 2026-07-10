@@ -39,7 +39,7 @@ class SolidMarkerCardScanTest {
 
     @Test
     fun flatSquareCardScansViaSolidMarkerPath() {
-        val result = AndroidOmrEngine.scan(renderedFrame(), template())
+        val result = AndroidOmrEngine.scan(renderedFrame(), template(), AnchorMode.LEGACY)
 
         assertTrue(result.debugInfo.joinToString(), result.success)
         assertTrue(result.debugInfo.contains("anchorPath=solid-marker"))
@@ -58,7 +58,7 @@ class SolidMarkerCardScanTest {
             ldShift = 6 to -4,
             rdShift = -14 to -10,
         )
-        val result = AndroidOmrEngine.scan(warped, template())
+        val result = AndroidOmrEngine.scan(warped, template(), AnchorMode.LEGACY)
 
         assertTrue(result.debugInfo.joinToString(), result.success)
         assertTrue(result.debugInfo.contains("anchorPath=solid-marker"))
@@ -97,7 +97,7 @@ class SolidMarkerCardScanTest {
         val renderer = DesktopTemplateCardRenderer(template(), scale = 3f, markerStyle = CornerMarkerStyle.L_BRACKET)
         renderer.markAnswer(1, "A")
         renderer.markAdmissionNumber("1234")
-        val result = AndroidOmrEngine.scan(renderer.frame(), template())
+        val result = AndroidOmrEngine.scan(renderer.frame(), template(), AnchorMode.LEGACY)
 
         assertTrue(result.debugInfo.joinToString(), result.success)
         assertTrue(result.debugInfo.contains("anchorPath=l-bracket"))

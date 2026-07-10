@@ -72,6 +72,9 @@ object CodedCornerMarkerDetector {
         if (selected.size < MIN_UNIQUE_MARKERS) {
             return CodedCornerMarkerMatchResult(anchors = null, diagnostics = emptyDiagnostics)
         }
+        if (selected.values.map { it.rotation }.distinct().size != 1) {
+            return CodedCornerMarkerMatchResult(anchors = null, diagnostics = emptyDiagnostics)
+        }
 
         val source = mutableListOf<PerspectivePoint>()
         val target = mutableListOf<PerspectivePoint>()

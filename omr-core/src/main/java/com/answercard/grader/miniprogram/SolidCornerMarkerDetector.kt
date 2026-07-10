@@ -12,6 +12,11 @@ data class SolidCornerMarkerDiagnostics(
     val localizedCandidateCount: Int,
     val candidateSummaries: List<String>,
     val selectedCenters: String?,
+    val bestCombinationScore: Double?,
+    val runnerUpCombinationScore: Double?,
+    val combinationScoreGap: Double?,
+    val ambiguous: Boolean,
+    val runnerUpCenters: String?,
 ) {
     fun debugInfo(): List<String> = listOf(
         "solidMarkerThreshold=$threshold",
@@ -20,7 +25,14 @@ data class SolidCornerMarkerDiagnostics(
         "solidMarkerLocalizedCandidates=$localizedCandidateCount",
         "solidMarkerCandidates=${candidateSummaries.joinToString(separator = ";")}",
         "solidMarkerSelected=${selectedCenters ?: "none"}",
+        "solidMarkerBestScore=${bestCombinationScore?.let(::format) ?: "none"}",
+        "solidMarkerRunnerUpScore=${runnerUpCombinationScore?.let(::format) ?: "none"}",
+        "solidMarkerScoreGap=${combinationScoreGap?.let(::format) ?: "none"}",
+        "solidMarkerAmbiguous=$ambiguous",
+        "solidMarkerRunnerUp=${runnerUpCenters ?: "none"}",
     )
+
+    private fun format(value: Double): String = "%.4f".format(Locale.US, value)
 }
 
 data class SolidCornerMarkerMatchResult(
@@ -41,6 +53,8 @@ object SolidCornerMarkerDetector {
     private const val MAX_QUAD_ASPECT_RELATIVE_DEVIATION = 0.45
     private const val MAX_SIZE_SPREAD = 2.0
     private const val HIGH_CONFIDENCE_SIZE_RATIO = 0.70
+    private const val MIN_DISTINCT_COMBINATION_GAP = 0.10
+    private const val MIN_RELATIVE_COMBINATION_GAP = 0.08
 
     fun findAnchors(frame: MiniProgramFrame, expectedAspectRatio: Double? = null): MiniProgramAnchors? =
         findAnchorsWithDiagnostics(frame, expectedAspectRatio).anchors
@@ -83,7 +97,10 @@ object SolidCornerMarkerDetector {
             return "${rect.left},${rect.top},${rect.width}x${rect.height}," +
                 "${"%.2f".format(Locale.US, component.fillRatio)}"
         }
-        fun diagnostics(selectedCenters: String? = null) = SolidCornerMarkerDiagnostics(
+        fun diagnostics(
+            selectedCenters: String? = null,
+            selection: AnchorCandidateSelection? = null,
+        ) = SolidCornerMarkerDiagnostics(
             threshold = threshold,
             componentCount = components.size,
             rawCandidateCount = rawCandidates.size,
@@ -93,6 +110,11 @@ object SolidCornerMarkerDetector {
                 .take(8)
                 .map(::summary),
             selectedCenters = selectedCenters,
+            bestCombinationScore = selection?.best?.score,
+            runnerUpCombinationScore = selection?.runnerUp?.score,
+            combinationScoreGap = selection?.scoreGap,
+            ambiguous = selection?.ambiguous == true,
+            runnerUpCenters = selection?.runnerUp?.anchors?.let(::anchorCenters),
         )
         if (candidates.size < 4) {
             return SolidCornerMarkerMatchResult(anchors = null, diagnostics = diagnostics())
@@ -105,8 +127,7 @@ object SolidCornerMarkerDetector {
         val ldChoices = nearest(candidates, row = lastRow, column = 0.0)
         val rdChoices = nearest(candidates, row = lastRow, column = lastColumn)
 
-        var best: MiniProgramAnchors? = null
-        var bestScore = Double.MAX_VALUE
+        val combinations = mutableListOf<ScoredAnchorCandidate>()
         for (lu in luChoices) for (ru in ruChoices) for (ld in ldChoices) for (rd in rdChoices) {
             val four = listOf(lu, ru, ld, rd)
             if (four.distinct().size != 4) continue
@@ -132,25 +153,36 @@ object SolidCornerMarkerDetector {
                 (frame.width.toDouble() * frame.height)
             if (areaRatio < 0.12) continue
             val score = aspectDeviation * 3.0 + (spread - 1.0) * 0.25 - areaRatio * 1.5
-            if (score < bestScore) {
-                bestScore = score
-                best = MiniProgramAnchors(
+            combinations += ScoredAnchorCandidate(
+                score = score,
+                anchors = MiniProgramAnchors(
                     lu = lu.toCandidate(MiniProgramCornerKind.LU),
                     ld = ld.toCandidate(MiniProgramCornerKind.LD),
                     ru = ru.toCandidate(MiniProgramCornerKind.RU),
                     rd = rd.toCandidate(MiniProgramCornerKind.RD),
                     quadCheck = MiniProgramGeometry.isQuad(luPoint, ldPoint, ruPoint, rdPoint),
-                )
-            }
+                ),
+            )
         }
-        val selectedCenters = best?.let { anchors ->
-            "${anchors.lu.point.column},${anchors.lu.point.row}|" +
-                "${anchors.ru.point.column},${anchors.ru.point.row}|" +
-                "${anchors.ld.point.column},${anchors.ld.point.row}|" +
-                "${anchors.rd.point.column},${anchors.rd.point.row}"
-        }
-        return SolidCornerMarkerMatchResult(anchors = best, diagnostics = diagnostics(selectedCenters))
+        val selection = AnchorAmbiguityEvaluator.select(
+            candidates = combinations,
+            direction = AnchorScoreDirection.LOWER_IS_BETTER,
+            absoluteMinimumGap = MIN_DISTINCT_COMBINATION_GAP,
+            relativeMinimumGap = MIN_RELATIVE_COMBINATION_GAP,
+        )
+        val best = selection.best?.anchors
+        val selectedCenters = best?.let(::anchorCenters)
+        return SolidCornerMarkerMatchResult(
+            anchors = best.takeUnless { selection.ambiguous },
+            diagnostics = diagnostics(selectedCenters, selection),
+        )
     }
+
+    private fun anchorCenters(anchors: MiniProgramAnchors): String =
+        "${anchors.lu.point.column},${anchors.lu.point.row}|" +
+            "${anchors.ru.point.column},${anchors.ru.point.row}|" +
+            "${anchors.ld.point.column},${anchors.ld.point.row}|" +
+            "${anchors.rd.point.column},${anchors.rd.point.row}"
 
     private fun nearest(
         candidates: List<MiniProgramComponent>,

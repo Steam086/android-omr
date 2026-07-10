@@ -1,6 +1,7 @@
 package com.answercard.grader.ui
 
 import com.answercard.grader.miniprogram.AndroidOmrResult
+import com.answercard.grader.miniprogram.ScanRejectionReason
 import com.answercard.grader.template.TemplateState
 import com.answercard.grader.vision.OmrScanResult
 
@@ -24,7 +25,7 @@ data class ScanDisplayResult(
                 examId = result.admissionNumber?.digits,
                 scoreText = result.score?.let { "${formatScore(it.totalScore)}/${formatScore(it.maxScore)}" },
                 failureReason = result.failureReason,
-                friendlyMessage = friendlyMessage(result.failureReason),
+                friendlyMessage = friendlyMessage(result.rejectionReason, result.failureReason),
                 debugInfo = result.debugInfo,
                 answerMarks = answerMarks(result, template),
                 admissionMarks = admissionMarks(result),
@@ -112,8 +113,29 @@ data class ScanDisplayResult(
         private fun formatScore(score: Double): String =
             if (score % 1.0 == 0.0) score.toInt().toString() else score.toString()
 
-        private fun friendlyMessage(failureReason: String?): String? =
+        private fun friendlyMessage(
+            rejectionReason: ScanRejectionReason?,
+            failureReason: String?,
+        ): String? =
             when {
+                rejectionReason == ScanRejectionReason.WAIT_STABILITY -> "请持稳手机。"
+                rejectionReason == ScanRejectionReason.WAIT_FOCUS -> "正在对焦，请保持不动。"
+                rejectionReason == ScanRejectionReason.WAIT_EXPOSURE -> "正在调整曝光，请保持不动。"
+                rejectionReason == ScanRejectionReason.RETAKE_BLUR -> "画面模糊，请持稳后重拍。"
+                rejectionReason == ScanRejectionReason.RETAKE_EXPOSURE -> "光线过强或过暗，请调整光线后重拍。"
+                rejectionReason == ScanRejectionReason.RETAKE_CODED_MARKERS ->
+                    "角标不清晰，请完整对准四个编码角标后重拍。"
+                rejectionReason == ScanRejectionReason.RETAKE_LEGACY_MARKERS ->
+                    "未可靠找到旧卡角标，请完整对准四角后重拍。"
+                rejectionReason == ScanRejectionReason.LEGACY_ANCHOR_AMBIGUOUS ->
+                    "旧卡定位有歧义，请调整角度和光线后重拍。"
+                rejectionReason == ScanRejectionReason.RETAKE_CARD_GEOMETRY ->
+                    "答题卡位置或透视不可靠，请对正后重拍。"
+                rejectionReason == ScanRejectionReason.RETAKE_CELL_SIZE ->
+                    "答题卡距离过远，请靠近后重拍。"
+                rejectionReason == ScanRejectionReason.RETAKE_READ ->
+                    "答题区存在不确定内容，请重拍或人工确认。"
+                rejectionReason == ScanRejectionReason.INVALID_TEMPLATE -> "当前答题卡模板无效。"
                 failureReason == null -> null
                 failureReason.contains("corner anchors not found") ||
                     failureReason.contains("invalid card geometry") ->

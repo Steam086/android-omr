@@ -10,7 +10,7 @@ This is a Kotlin Android app for generating and scanning answer cards, with the 
 - `sh gradlew test` runs JVM unit tests, including Robolectric-enabled tests. Use `./gradlew` instead if the wrapper has executable permissions.
 - `sh gradlew :omr-core:test` runs the Android-free OMR core tests.
 - `sh gradlew :omr-core:test --tests com.answercard.grader.miniprogram.DesktopWechatImageScanTest` runs the desktop image-regression test for `微信图片_20260707164730_464_10.png`.
-- `sh gradlew :omr-cli:run --args="微信图片_20260707164730_464_10.png --questions 16 --answers 1:A,2:B,6:C,11:D,16:A --score 2"` scans the sample image without compiling the Android app.
+- `sh gradlew :omr-cli:run --args="../images/微信图片_20260707164730_464_10.png --questions 16 --answers 1:A,2:B,6:C,11:D,16:A --score 2 --legacy"` scans the legacy sample image without compiling the Android app.
 - `sh gradlew assembleDebug` builds a debug APK.
 - `sh gradlew check` runs the standard Gradle verification lifecycle.
 - `sh gradlew clean` removes generated build output when results look stale.

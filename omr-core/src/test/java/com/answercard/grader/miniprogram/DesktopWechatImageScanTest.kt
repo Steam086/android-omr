@@ -20,6 +20,7 @@ class DesktopWechatImageScanTest {
         val result = AndroidOmrEngine.scan(
             frame = loadImageAsFrame(file),
             template = sampleTemplate(),
+            anchorMode = AnchorMode.LEGACY,
         )
 
         assertTrue(result.failureReason ?: result.debugInfo.joinToString(), result.success)
@@ -41,6 +42,7 @@ class DesktopWechatImageScanTest {
         val result = AndroidOmrEngine.scan(
             frame = downscaleToWidth(loadImageAsFrame(file), 1280),
             template = sampleTemplate(),
+            anchorMode = AnchorMode.LEGACY,
         )
 
         assertTrue(result.failureReason ?: result.debugInfo.joinToString(), result.success)
@@ -99,7 +101,11 @@ class DesktopWechatImageScanTest {
         )
 
     private fun assertSolidMarkerScan(file: File, frame: MiniProgramFrame) {
-        val result = AndroidOmrEngine.scan(frame = frame, template = solidMarkerTemplate())
+        val result = AndroidOmrEngine.scan(
+            frame = frame,
+            template = solidMarkerTemplate(),
+            anchorMode = AnchorMode.LEGACY,
+        )
 
         assertTrue("${file.name}: ${result.failureReason ?: result.debugInfo.joinToString()}", result.success)
         assertEquals("${file.name}: admission", "1233", result.admissionNumber?.digits)

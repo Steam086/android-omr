@@ -7,6 +7,8 @@ import java.util.Random
 import javax.imageio.ImageIO
 import kotlin.math.pow
 import kotlin.math.roundToInt
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -16,6 +18,47 @@ import org.junit.Test
  * Writes a report to build/reports/camera-instability-probe.txt.
  */
 class DesktopCameraInstabilityProbeTest {
+    @Test
+    fun stronglyOverexposedLegacyFrameNeverOutputsScore() {
+        val file = findRootFile("微信图片_20260707164730_464_10.png")
+        assertTrue("sample photo should exist", file.isFile)
+        val frame = mapPixels(downscaleToWidth(loadImageAsFrame(file), 1280)) { it + 40 }
+
+        val result = AndroidOmrEngine.scan(
+            frame = frame,
+            template = sampleTemplate(),
+            anchorMode = AnchorMode.LEGACY,
+        )
+
+        assertFalse(result.debugInfo.joinToString(), result.success)
+        assertNull("unsafe frames must never expose a score", result.score)
+        assertTrue(
+            result.rejectionReason in setOf(
+                ScanRejectionReason.RETAKE_EXPOSURE,
+                ScanRejectionReason.LEGACY_ANCHOR_AMBIGUOUS,
+                ScanRejectionReason.RETAKE_LEGACY_MARKERS,
+                ScanRejectionReason.RETAKE_CARD_GEOMETRY,
+            ),
+        )
+    }
+
+    @Test
+    fun blurredLegacyFrameWithUnstableAnswersNeverOutputsScore() {
+        val file = findRootFile("微信图片_20260707164730_464_10.png")
+        assertTrue("sample photo should exist", file.isFile)
+        val frame = boxBlur(downscaleToWidth(loadImageAsFrame(file), 1280), radius = 2)
+
+        val result = AndroidOmrEngine.scan(
+            frame = frame,
+            template = sampleTemplate(),
+            anchorMode = AnchorMode.LEGACY,
+        )
+
+        assertFalse(result.debugInfo.joinToString(), result.success)
+        assertNull("strongly blurred frames must never expose a score", result.score)
+        assertTrue(result.debugInfo.joinToString(), result.rejectionReason == ScanRejectionReason.RETAKE_BLUR)
+    }
+
     @Test
     fun probeCameraLikePerturbations() {
         val file = findRootFile("微信图片_20260707164730_464_10.png")
@@ -34,7 +77,7 @@ class DesktopCameraInstabilityProbeTest {
             for (g in listOf(0.8, 1.25)) {
                 add("ds1280 gamma$g" to gamma(base, g))
             }
-            for (r in listOf(1, 2)) {
+            for (r in listOf(1, 2, 3, 4)) {
                 add("ds1280 blur$r" to boxBlur(base, r))
             }
             for (seed in 1..5) {
@@ -51,11 +94,15 @@ class DesktopCameraInstabilityProbeTest {
 
         val report = StringBuilder()
         report.appendLine(
-            "variant | thr | ok | score | admission | answers | comps | ref | qMarks | aMarks | failure",
+            "variant | thr | ok | score | admission | answers | sharpness | exposure | comps | ref | qMarks | aMarks | failure",
         )
         variants.forEach { (name, frame) ->
             val threshold = MiniProgramGeometry.threshold(frame)
-            val result = AndroidOmrEngine.scan(frame = frame, template = template)
+            val result = AndroidOmrEngine.scan(
+                frame = frame,
+                template = template,
+                anchorMode = AnchorMode.LEGACY,
+            )
             val answers = result.answerArea?.questions
                 ?.sortedBy { it.questionIndex }
                 ?.joinToString("") { q -> if (q.selectedLabels.isEmpty()) "-" else q.selectedLabels.joinToString("") }
@@ -71,6 +118,8 @@ class DesktopCameraInstabilityProbeTest {
                     result.score?.let { "${it.totalScore}/${it.maxScore}" } ?: "-",
                     result.admissionNumber?.digits ?: "-",
                     answers,
+                    tag("cardNormalizedLaplacianVariance"),
+                    tag("cardHighlightClipRatio"),
                     tag("solidMarkComponents"),
                     tag("solidMarkReference"),
                     tag("solidQuestionMarks"),

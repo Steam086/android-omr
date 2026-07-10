@@ -5,6 +5,7 @@ import com.answercard.grader.miniprogram.AndroidAdmissionDigitReadResult
 import com.answercard.grader.miniprogram.AndroidAdmissionNumberCandidate
 import com.answercard.grader.miniprogram.AndroidAnswerAreaReadResult
 import com.answercard.grader.miniprogram.AndroidOmrResult
+import com.answercard.grader.miniprogram.ScanRejectionReason
 import com.answercard.grader.miniprogram.AndroidOmrScoreItem
 import com.answercard.grader.miniprogram.AndroidOmrScoreResult
 import com.answercard.grader.miniprogram.AndroidOptionReadResult
@@ -18,6 +19,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScanDisplayResultTest {
+    @Test
+    fun mapsStableRejectionCodeToActionableRetakeMessageWithoutScore() {
+        val rejected = androidResult(
+            success = false,
+            examId = null,
+            totalScore = null,
+            maxScore = null,
+            failureReason = "frame is too blurry",
+        ).copy(rejectionReason = ScanRejectionReason.RETAKE_BLUR)
+
+        val display = ScanDisplayResult.fromAndroidOmrResult(rejected)
+
+        assertEquals("画面模糊，请持稳后重拍。", display.friendlyMessage)
+        assertEquals(null, display.scoreText)
+    }
+
     @Test
     fun mapsSuccessfulAndroidOmrResultToAdmissionNumberAndScore() {
         val display = ScanDisplayResult.fromAndroidOmrResult(

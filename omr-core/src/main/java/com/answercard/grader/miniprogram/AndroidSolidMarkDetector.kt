@@ -11,6 +11,7 @@ data class AndroidSolidMarkOverlay(
     val questionCells: Set<AndroidPaperQuestionCellKey>,
     val admissionNumberCells: Set<AndroidPaperAdmissionNumberCellKey>,
     val debugInfo: List<String>,
+    val isReferenceAmbiguous: Boolean = false,
 ) {
     val hasQuestionMarks: Boolean get() = questionCells.isNotEmpty()
     val hasAdmissionNumberMarks: Boolean get() = admissionNumberCells.isNotEmpty()
@@ -47,7 +48,7 @@ object AndroidSolidMarkDetector {
         // inverted mark centers explain more dense components, closest to the cell centers;
         // remaining ties keep the legacy source-based preference (candidate order).
         val candidates = sourceReferenceCandidates(cardLayout, anchors)
-        val best = candidates
+        val matches = candidates
             .map { (name, source) ->
                 matchComponents(
                     components = components,
@@ -63,7 +64,20 @@ object AndroidSolidMarkDetector {
                 compareByDescending<ComponentMatchResult> { it.matchedComponents }
                     .thenBy { it.totalCenterDistance },
             )
-            .first()
+        val best = matches.first()
+        val runnerUp = matches.drop(1).firstOrNull()
+        val mappingDiffers = runnerUp != null &&
+            (best.questionCells != runnerUp.questionCells ||
+                best.admissionNumberCells != runnerUp.admissionNumberCells)
+        val matchedComponentGap = runnerUp?.let { best.matchedComponents - it.matchedComponents }
+        val centerDistanceGap = runnerUp?.let { it.totalCenterDistance - best.totalCenterDistance }
+        val evidenceIsClose = runnerUp != null &&
+            matchedComponentGap!! <= MAX_AMBIGUOUS_MATCHED_COMPONENT_GAP &&
+            centerDistanceGap!! <= maxOf(
+                MIN_AMBIGUOUS_CENTER_DISTANCE_GAP,
+                best.totalCenterDistance * MAX_AMBIGUOUS_CENTER_DISTANCE_RATIO,
+            )
+        val referenceAmbiguous = mappingDiffers && evidenceIsClose
 
         return AndroidSolidMarkOverlay(
             questionCells = best.questionCells,
@@ -73,7 +87,12 @@ object AndroidSolidMarkDetector {
                 "solidMarkReference=${best.referenceName}",
                 "solidQuestionMarks=${best.questionCells.size}",
                 "solidAdmissionMarks=${best.admissionNumberCells.size}",
+                "solidMarkRunnerUpReference=${runnerUp?.referenceName ?: "none"}",
+                "solidMarkMatchedComponentGap=${matchedComponentGap ?: "none"}",
+                "solidMarkCenterDistanceGap=${centerDistanceGap ?: "none"}",
+                "solidMarkReferenceAmbiguous=$referenceAmbiguous",
             ),
+            isReferenceAmbiguous = referenceAmbiguous,
         )
     }
 
@@ -84,6 +103,10 @@ object AndroidSolidMarkDetector {
         val matchedComponents: Int,
         val totalCenterDistance: Double,
     )
+
+    private const val MAX_AMBIGUOUS_MATCHED_COMPONENT_GAP = 1
+    private const val MIN_AMBIGUOUS_CENTER_DISTANCE_GAP = 6.0
+    private const val MAX_AMBIGUOUS_CENTER_DISTANCE_RATIO = 0.15
 
     private fun matchComponents(
         components: List<MiniProgramComponent>,

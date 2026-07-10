@@ -19,54 +19,34 @@ object AndroidOmrEngine {
     fun scan(
         frame: MiniProgramFrame,
         template: TemplateState,
+        anchorMode: AnchorMode = AnchorMode.CODED_ONLY,
     ): AndroidOmrResult {
         val layoutResult = buildLayout(template)
         val layout = layoutResult.layout ?: return layoutResult.toResult()
         val debugInfo = mutableListOf<String>()
         debugInfo += layoutResult.debugInfo
+        debugInfo += "anchorMode=${anchorMode.name}"
 
-        val cardLayout = TemplateGeometry.buildLayout(template)
-        val codedMatch = CodedCornerMarkerDetector.findAnchorsWithDiagnostics(frame, cardLayout)
-        val codedAnchors = codedMatch.anchors
-        val hasPartialCodedMarkers = codedAnchors == null && codedMatch.diagnostics.detectedIds.size >= 2
-        val solidMatch = if (codedAnchors == null && !hasPartialCodedMarkers) {
-            SolidCornerMarkerDetector.findAnchorsWithDiagnostics(
-                frame = frame,
-                expectedAspectRatio = expectedMarkerCenterAspectRatio(template),
+        val anchorDecision = locateAnchors(frame, template, anchorMode)
+        val cornerDebugInfo = anchorDecision.debugInfo
+        if (anchorDecision.normalizationQuarterTurns > 0) {
+            val normalized = scan(
+                frame = rotateCounterClockwise(frame, anchorDecision.normalizationQuarterTurns),
+                template = template,
+                anchorMode = anchorMode,
             )
-        } else {
-            null
-        }
-        val solidAnchors = solidMatch?.anchors
-        val cornerMatch = if (codedAnchors == null && solidAnchors == null && !hasPartialCodedMarkers) {
-            CornerAnchorMatcher.findAnchorsWithDiagnostics(
-                frame = frame,
-                expectedAspectRatio = expectedRenderedAspectRatio(template),
+            return normalized.copy(
+                debugInfo = debugInfo + cornerDebugInfo +
+                    "codedFrameNormalizedQuarterTurns=${anchorDecision.normalizationQuarterTurns}" +
+                    normalized.debugInfo,
             )
-        } else {
-            null
         }
-        val anchorPath = when {
-            codedAnchors != null -> "anchorPath=coded-marker"
-            hasPartialCodedMarkers -> "anchorPath=coded-marker-partial"
-            solidAnchors != null -> "anchorPath=solid-marker"
-            else -> "anchorPath=l-bracket"
-        }
-        val cornerDebugInfo = codedMatch.diagnostics.debugInfo() + solidMatch?.diagnostics?.debugInfo().orEmpty() +
-            cornerMatch?.diagnostics?.debugInfo().orEmpty() + anchorPath
-        val anchors = codedAnchors ?: solidAnchors ?: cornerMatch?.anchors
-            ?: return AndroidOmrResult(
-                success = false,
-                failureReason = "corner anchors not found",
-                layout = layout,
-                anchors = null,
-                grid = null,
-                answerArea = null,
-                admissionNumber = null,
-                score = null,
-                warnings = emptyList(),
-                debugInfo = debugInfo + cornerDebugInfo + "failureStage=corner" + "corner anchors not found",
-            )
+        val anchors = anchorDecision.anchors ?: return AndroidOmrResult.rejected(
+            reason = anchorDecision.rejectionReason ?: ScanRejectionReason.RETAKE_CODED_MARKERS,
+            message = anchorDecision.failureReason ?: "corner anchors not found",
+            layout = layout,
+            debugInfo = debugInfo + cornerDebugInfo + "failureStage=corner",
+        )
 
         val grid = try {
             MiniProgramGridBuilder.build(
@@ -79,16 +59,11 @@ object AndroidOmrEngine {
             )
         } catch (error: IllegalArgumentException) {
             val reason = "grid failed: ${error.message}"
-            return AndroidOmrResult(
-                success = false,
-                failureReason = reason,
+            return AndroidOmrResult.rejected(
+                reason = ScanRejectionReason.RETAKE_CARD_GEOMETRY,
+                message = reason,
                 layout = layout,
                 anchors = anchors,
-                grid = null,
-                answerArea = null,
-                admissionNumber = null,
-                score = null,
-                warnings = emptyList(),
                 debugInfo = debugInfo + cornerDebugInfo + "failureStage=grid" + reason,
             )
         }
@@ -101,19 +76,29 @@ object AndroidOmrEngine {
             } else {
                 "invalid card geometry: possible false anchors"
             }
-            return AndroidOmrResult(
-                success = false,
-                failureReason = reason,
+            return AndroidOmrResult.rejected(
+                reason = ScanRejectionReason.RETAKE_CARD_GEOMETRY,
+                message = reason,
                 layout = layout,
                 anchors = anchors,
                 grid = grid,
-                answerArea = null,
-                admissionNumber = null,
-                score = null,
-                warnings = emptyList(),
                 debugInfo = debugInfo + cornerDebugInfo + "grid=${layout.gridRows}x${layout.gridColumns}" +
                     geometryDebugInfo + "failureStage=geometry validation" + "failureDetail=$geometryFailure" +
                     "geometryRejectionReason=$geometryFailure",
+            )
+        }
+        val cardQuality = CARD_QUALITY_EVALUATOR.evaluate(frame, anchors)
+        val cardQualityDebugInfo = cardQuality.debugInfo("card")
+        if (!cardQuality.accepted) {
+            val rejection = cardQuality.rejectionReason ?: ScanRejectionReason.RETAKE_BLUR
+            return AndroidOmrResult.rejected(
+                reason = rejection,
+                message = qualityFailureMessage(rejection),
+                layout = layout,
+                anchors = anchors,
+                grid = grid,
+                debugInfo = debugInfo + cornerDebugInfo + geometryDebugInfo +
+                    cardQualityDebugInfo + "failureStage=card quality",
             )
         }
         val projectedCells = AndroidPaperProjectedCellBuilder.build(
@@ -126,24 +111,31 @@ object AndroidOmrEngine {
             template = template,
             anchors = anchors,
         )
+        if (solidMarks.isReferenceAmbiguous) {
+            return AndroidOmrResult.rejected(
+                reason = ScanRejectionReason.LEGACY_ANCHOR_AMBIGUOUS,
+                message = "legacy anchor reference is ambiguous",
+                layout = layout,
+                anchors = anchors,
+                grid = grid,
+                debugInfo = debugInfo + cornerDebugInfo + geometryDebugInfo + cardQualityDebugInfo +
+                    solidMarks.debugInfo + "failureStage=legacy reference ambiguity",
+            )
+        }
         val cellValidation = ProjectedCellSizeValidation.from(projectedCells)
         val cellValidationDebugInfo = cellValidation.debugInfo()
         if (!cellValidation.isValid) {
             val reason = "projected cell too small: Q1A=${cellValidation.q1A.width}x${cellValidation.q1A.height}, " +
                 "min answer cell = ${cellValidation.minAnswer.width}x${cellValidation.minAnswer.height}, " +
                 "min admission cell = ${cellValidation.minAdmission.width}x${cellValidation.minAdmission.height}"
-            return AndroidOmrResult(
-                success = false,
-                failureReason = reason,
+            return AndroidOmrResult.rejected(
+                reason = ScanRejectionReason.RETAKE_CELL_SIZE,
+                message = reason,
                 layout = layout,
                 anchors = anchors,
                 grid = grid,
-                answerArea = null,
-                admissionNumber = null,
-                score = null,
-                warnings = emptyList(),
                 debugInfo = debugInfo + cornerDebugInfo + "grid=${layout.gridRows}x${layout.gridColumns}" +
-                    geometryDebugInfo + projectedCells.debugInfo + cellValidationDebugInfo +
+                    geometryDebugInfo + cardQualityDebugInfo + projectedCells.debugInfo + cellValidationDebugInfo +
                     "failureStage=cell size validation" + reason,
             )
         }
@@ -157,7 +149,8 @@ object AndroidOmrEngine {
             projectedCells = projectedCells,
             solidMarks = solidMarks,
             debugInfo = debugInfo + cornerDebugInfo + "grid=${layout.gridRows}x${layout.gridColumns}" +
-                geometryDebugInfo + projectedCells.debugInfo + solidMarks.debugInfo + cellValidationDebugInfo,
+                geometryDebugInfo + cardQualityDebugInfo + projectedCells.debugInfo +
+                solidMarks.debugInfo + cellValidationDebugInfo,
         )
     }
 
@@ -222,6 +215,7 @@ object AndroidOmrEngine {
                 score = null,
                 warnings = emptyList(),
                 debugInfo = debugInfo + "failureStage=answer" + reason,
+                rejectionReason = ScanRejectionReason.RETAKE_READ,
             )
         }
 
@@ -257,15 +251,102 @@ object AndroidOmrEngine {
             grid = grid,
             answerArea = answerArea,
             admissionNumber = admissionNumber,
-            score = score,
+            score = score.takeIf { failureReason == null },
             warnings = warnings,
             debugInfo = if (failureReason == null) {
                 debugInfo + "scan success"
             } else {
                 debugInfo + failureStage(failureReason) + failureReason
             },
+            rejectionReason = if (failureReason == null) null else ScanRejectionReason.RETAKE_READ,
         )
     }
+
+    private fun locateAnchors(
+        frame: MiniProgramFrame,
+        template: TemplateState,
+        anchorMode: AnchorMode,
+    ): AnchorLocationDecision =
+        when (anchorMode) {
+            AnchorMode.CODED_ONLY -> {
+                val match = CodedCornerMarkerDetector.findAnchorsWithDiagnostics(
+                    frame,
+                    TemplateGeometry.buildLayout(template),
+                )
+                val debugInfo = match.diagnostics.debugInfo() + if (match.anchors == null) {
+                    "anchorPath=coded-marker-rejected"
+                } else {
+                    "anchorPath=coded-marker"
+                }
+                if (match.anchors == null) {
+                    AnchorLocationDecision(
+                        anchors = null,
+                        rejectionReason = ScanRejectionReason.RETAKE_CODED_MARKERS,
+                        failureReason = "coded markers not reliable",
+                        debugInfo = debugInfo,
+                    )
+                } else {
+                    val rotation = match.diagnostics.rotations.values.distinct().singleOrNull() ?: 0
+                    AnchorLocationDecision(
+                        anchors = match.anchors,
+                        rejectionReason = null,
+                        failureReason = null,
+                        debugInfo = debugInfo,
+                        normalizationQuarterTurns = rotation,
+                    )
+                }
+            }
+            AnchorMode.LEGACY -> locateLegacyAnchors(frame, template)
+        }
+
+    private fun locateLegacyAnchors(
+        frame: MiniProgramFrame,
+        template: TemplateState,
+    ): AnchorLocationDecision {
+        val solid = SolidCornerMarkerDetector.findAnchorsWithDiagnostics(
+            frame = frame,
+            expectedAspectRatio = expectedMarkerCenterAspectRatio(template),
+        )
+        val solidDebugInfo = solid.diagnostics.debugInfo()
+        if (solid.diagnostics.ambiguous) {
+            return AnchorLocationDecision(
+                anchors = null,
+                rejectionReason = ScanRejectionReason.LEGACY_ANCHOR_AMBIGUOUS,
+                failureReason = "legacy solid marker candidates are ambiguous",
+                debugInfo = solidDebugInfo + "anchorPath=solid-marker-ambiguous",
+            )
+        }
+        solid.anchors?.let {
+            return AnchorLocationDecision(it, null, null, solidDebugInfo + "anchorPath=solid-marker")
+        }
+
+        val bracket = CornerAnchorMatcher.findAnchorsWithDiagnostics(
+            frame = frame,
+            expectedAspectRatio = expectedRenderedAspectRatio(template),
+        )
+        val debugInfo = solidDebugInfo + bracket.diagnostics.debugInfo()
+        if (bracket.diagnostics.ambiguous) {
+            return AnchorLocationDecision(
+                anchors = null,
+                rejectionReason = ScanRejectionReason.LEGACY_ANCHOR_AMBIGUOUS,
+                failureReason = "legacy L bracket candidates are ambiguous",
+                debugInfo = debugInfo + "anchorPath=l-bracket-ambiguous",
+            )
+        }
+        val anchors = bracket.anchors ?: return AnchorLocationDecision(
+            anchors = null,
+            rejectionReason = ScanRejectionReason.RETAKE_LEGACY_MARKERS,
+            failureReason = "legacy corner anchors not found",
+            debugInfo = debugInfo + "anchorPath=l-bracket-rejected",
+        )
+        return AnchorLocationDecision(anchors, null, null, debugInfo + "anchorPath=l-bracket")
+    }
+
+    private fun qualityFailureMessage(reason: ScanRejectionReason): String =
+        when (reason) {
+            ScanRejectionReason.RETAKE_EXPOSURE -> "card exposure is outside the safe range"
+            else -> "card image is too blurry"
+        }
 
     private fun buildLayout(template: TemplateState): LayoutBuildResult =
         try {
@@ -314,7 +395,36 @@ object AndroidOmrEngine {
                 score = null,
                 warnings = emptyList(),
                 debugInfo = debugInfo,
+                rejectionReason = ScanRejectionReason.INVALID_TEMPLATE,
             )
+    }
+
+    private data class AnchorLocationDecision(
+        val anchors: MiniProgramAnchors?,
+        val rejectionReason: ScanRejectionReason?,
+        val failureReason: String?,
+        val debugInfo: List<String>,
+        val normalizationQuarterTurns: Int = 0,
+    )
+
+    private val CARD_QUALITY_EVALUATOR = FrameQualityEvaluator(FrameQualityThresholds.CARD_ROI)
+
+    private fun rotateCounterClockwise(frame: MiniProgramFrame, quarterTurns: Int): MiniProgramFrame {
+        var rotated = frame
+        repeat(quarterTurns.mod(4)) {
+            val pixels = IntArray(rotated.width * rotated.height)
+            val newWidth = rotated.height
+            val newHeight = rotated.width
+            for (row in 0 until rotated.height) {
+                for (column in 0 until rotated.width) {
+                    val newRow = rotated.width - 1 - column
+                    val newColumn = row
+                    pixels[newRow * newWidth + newColumn] = rotated[row, column]
+                }
+            }
+            rotated = MiniProgramFrame(newWidth, newHeight, pixels)
+        }
+        return rotated
     }
 
     private data class CardGeometry(

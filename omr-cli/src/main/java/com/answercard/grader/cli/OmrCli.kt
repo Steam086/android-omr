@@ -1,6 +1,7 @@
 package com.answercard.grader.cli
 
 import com.answercard.grader.miniprogram.AndroidOmrEngine
+import com.answercard.grader.miniprogram.AnchorMode
 import com.answercard.grader.miniprogram.MiniProgramFrame
 import com.answercard.grader.template.QuestionSetting
 import com.answercard.grader.template.TemplateState
@@ -37,7 +38,11 @@ fun main(args: Array<String>) {
 
     val template = buildTemplate(options)
     val frame = DesktopImageLoader.load(input)
-    val result = AndroidOmrEngine.scan(frame = frame, template = template)
+    val result = AndroidOmrEngine.scan(
+        frame = frame,
+        template = template,
+        anchorMode = if (options.legacy) AnchorMode.LEGACY else AnchorMode.CODED_ONLY,
+    )
 
     println("Image: ${input.path}")
     println("Frame: ${frame.width}x${frame.height}")
@@ -108,6 +113,7 @@ private data class CliOptions(
     val answers: Map<Int, String>,
     val score: Int,
     val noHeader: Boolean,
+    val legacy: Boolean,
     val debug: Boolean,
     val help: Boolean,
 ) {
@@ -118,6 +124,7 @@ private data class CliOptions(
             var answers = emptyMap<Int, String>()
             var score = DEFAULT_SCORE
             var noHeader = false
+            var legacy = false
             var debug = false
             var help = false
 
@@ -128,6 +135,7 @@ private data class CliOptions(
                     arg == "--help" || arg == "-h" -> help = true
                     arg == "--debug" -> debug = true
                     arg == "--no-header" -> noHeader = true
+                    arg == "--legacy" -> legacy = true
                     arg == "--questions" -> {
                         questionCount = args.valueAfter(index, arg).toIntStrict(arg)
                         index += 1
@@ -169,6 +177,7 @@ private data class CliOptions(
                 answers = answers,
                 score = score,
                 noHeader = noHeader,
+                legacy = legacy,
                 debug = debug,
                 help = help,
             )
@@ -225,13 +234,14 @@ private fun printUsage() {
     println(
         """
         Usage:
-          gradlew :omr-cli:run --args="<image> [--questions N] [--answers 1:A,2:B] [--score N] [--no-header] [--debug]"
+          gradlew :omr-cli:run --args="<image> [--questions N] [--answers 1:A,2:B] [--score N] [--no-header] [--legacy] [--debug]"
 
         Defaults:
           --questions $DEFAULT_QUESTION_COUNT
           --score $DEFAULT_SCORE
 
         When --answers is provided, only listed questions receive --score; unlisted questions use score 0.
+        New coded cards are the default. Pass --legacy explicitly for old solid-square or L-bracket cards.
         """.trimIndent(),
     )
 }

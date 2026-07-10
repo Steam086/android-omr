@@ -47,9 +47,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.answercard.grader.camera.CameraAnalysisConfig
+import com.answercard.grader.camera.CameraCaptureMetadataTracker
 import com.answercard.grader.camera.CameraPreview
 import com.answercard.grader.camera.DeviceStabilityMonitor
+import com.answercard.grader.miniprogram.AnchorMode
 import com.answercard.grader.miniprogram.AndroidOmrAnalyzerOptions
+import com.answercard.grader.miniprogram.AndroidOmrFrameProcessor
 import com.answercard.grader.miniprogram.AndroidOmrImageAnalyzer
 import com.answercard.grader.miniprogram.OmrAnalysisOrientationMode
 import com.answercard.grader.miniprogram.ScanConsensusDecision
@@ -92,7 +95,10 @@ fun ScanScreen(
     var displayResult by remember { mutableStateOf<ScanDisplayResult?>(null) }
     var lockedScoreText by remember(template) { mutableStateOf<String?>(null) }
     var deviceStable by remember { mutableStateOf(true) }
-    val consensusTracker = remember(template) { ScanConsensusTracker() }
+    var anchorModeName by rememberSaveable { mutableStateOf(AnchorMode.CODED_ONLY.name) }
+    val anchorMode = remember(anchorModeName) { AnchorMode.valueOf(anchorModeName) }
+    val consensusTracker = remember(template, anchorMode) { ScanConsensusTracker() }
+    val captureMetadataTracker = remember { CameraCaptureMetadataTracker() }
     val stabilityMonitor = remember {
         DeviceStabilityMonitor(context) { stable ->
             mainHandler.post { deviceStable = stable }
@@ -112,7 +118,7 @@ fun ScanScreen(
         OmrAnalysisOrientationMode.valueOf(analysisOrientationModeName)
     }
     val layout = remember(template) { TemplateGeometry.buildLayout(template) }
-    val androidOmrAnalyzer = remember(template, analysisOrientationMode) {
+    val androidOmrAnalyzer = remember(template, analysisOrientationMode, anchorMode) {
         AndroidOmrImageAnalyzer(
             templateProvider = { template },
             onResult = { result ->
@@ -148,12 +154,18 @@ fun ScanScreen(
                             }
                         }
                         is ScanConsensusDecision.Pending -> {
+                            val rejectedDisplay = result.rejectionReason?.let {
+                                ScanDisplayResult.fromAndroidOmrResult(result, template)
+                            }
                             if (lockedScoreText == null) {
-                                status = if (decision.streak > 0) {
-                                    "确认中 ${decision.streak}/${decision.required}"
-                                } else {
-                                    "未识别"
+                                if (rejectedDisplay != null) displayResult = rejectedDisplay
+                                status = when {
+                                    rejectedDisplay?.friendlyMessage != null -> rejectedDisplay.friendlyMessage
+                                    decision.streak > 0 -> "确认中 ${decision.streak}/${decision.required}"
+                                    else -> "未识别"
                                 }
+                            } else if (rejectedDisplay?.friendlyMessage != null) {
+                                status = "已锁定；${rejectedDisplay.friendlyMessage}"
                             }
                         }
                         is ScanConsensusDecision.AlreadyLocked -> status = "已识别"
@@ -171,9 +183,14 @@ fun ScanScreen(
                 }
             },
             options = AndroidOmrAnalyzerOptions(
+                minAnalyzeIntervalMs = 0L,
+                candidateWindowMs = 450L,
                 analysisOrientationMode = analysisOrientationMode,
                 requestedAnalysisResolutionLabel = CameraAnalysisConfig.RequestedResolutionLabel,
             ),
+            processor = AndroidOmrFrameProcessor(anchorMode = anchorMode),
+            captureMetadataProvider = captureMetadataTracker::metadataFor,
+            isDeviceStableProvider = { stabilityMonitor.isStable() },
         )
     }
 
@@ -216,6 +233,18 @@ fun ScanScreen(
                 ScanChromeButton("方向：${analysisOrientationMode.label()}") {
                     analysisOrientationModeName = analysisOrientationMode.next().name
                 }
+                ScanChromeButton(if (anchorMode == AnchorMode.CODED_ONLY) "卡片：新版" else "卡片：旧版") {
+                    anchorModeName = if (anchorMode == AnchorMode.CODED_ONLY) {
+                        AnchorMode.LEGACY.name
+                    } else {
+                        AnchorMode.CODED_ONLY.name
+                    }
+                    consensusTracker.reset()
+                    captureMetadataTracker.clear()
+                    displayResult = null
+                    lockedScoreText = null
+                    status = "扫描中"
+                }
                 ScanChromeButton(if (soundEnabled) "声音：开" else "声音：关") {
                     soundEnabled = !soundEnabled
                 }
@@ -234,6 +263,7 @@ fun ScanScreen(
                     CameraPreview(
                         modifier = Modifier.fillMaxSize(),
                         analyzer = androidOmrAnalyzer,
+                        captureMetadataTracker = captureMetadataTracker,
                     )
                 } else {
                     CameraPreview(

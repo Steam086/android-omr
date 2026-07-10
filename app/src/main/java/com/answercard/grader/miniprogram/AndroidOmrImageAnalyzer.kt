@@ -17,6 +17,9 @@ class AndroidOmrImageAnalyzer(
     private val options: AndroidOmrAnalyzerOptions = AndroidOmrAnalyzerOptions(),
     private val frameAdapter: ((ImageProxy) -> MiniProgramFrame)? = null,
     private val nowMsProvider: () -> Long = System::currentTimeMillis,
+    private val captureMetadataProvider: (Long) -> FrameCaptureMetadata? = { null },
+    private val isDeviceStableProvider: () -> Boolean = { true },
+    private val qualityEvaluator: FrameQualityEvaluator = FrameQualityEvaluator(FrameQualityThresholds.PRE_OMR),
 ) : ImageAnalysis.Analyzer {
     private val busy = AtomicBoolean(false)
     private val intervalLock = Any()
@@ -27,14 +30,12 @@ class AndroidOmrImageAnalyzer(
     private val busyFrameCount = AtomicLong(0L)
     private val lastDroppedReason = AtomicReference("none")
     private val lastLaplacianVariance = AtomicReference(Double.NaN)
+    private var candidateWindowStartedAtMs: Long? = null
+    private var bestCandidate: FrameCandidate? = null
 
     override fun analyze(image: ImageProxy) {
         val currentFrameIndex = frameIndex.incrementAndGet()
         val processedAtMs = nowMsProvider()
-        // No stability or sharpness gate here: every frame reaches the engine. Shaky / blurry
-        // frames fail recognition on their own and are filtered by scan consensus downstream,
-        // rather than being guessed as "bad" and dropped before analysis (which froze the live
-        // read while the phone was in motion). Only the busy / interval throttle below applies.
         when (val gateDecision = tryEnterAnalysis(processedAtMs)) {
             FrameGateDecision.Process -> Unit
             FrameGateDecision.Busy -> {
@@ -53,28 +54,110 @@ class AndroidOmrImageAnalyzer(
             }
         }
         try {
-            val frame = frameAdapter?.invoke(image)
-                ?: CameraImageProxyFrameAdapter.fromImageProxy(
-                    image = image,
-                    orientationMode = options.analysisOrientationMode,
-                )
-            // Measured for the debug panel only (soft signal for tuning), never used to drop.
-            lastLaplacianVariance.set(FrameSharpness.laplacianVariance(frame))
+            val metadata = captureMetadataProvider(image.imageInfo.timestamp)
             val imageDebugInfo = image.debugInfo(
                 currentFrameIndex = currentFrameIndex,
                 processedAtMs = processedAtMs,
                 droppedReason = "processed",
             )
+            val captureDebugInfo = metadata?.debugInfo() ?: listOf("captureMetadata=unavailable")
+            if (!isDeviceStableProvider()) {
+                clearCandidateWindow()
+                emitRejection(
+                    reason = ScanRejectionReason.WAIT_STABILITY,
+                    message = "device is moving",
+                    debugInfo = imageDebugInfo + captureDebugInfo + "failureStage=device stability",
+                )
+                return
+            }
+            val captureGate = CaptureStateEvaluator.evaluate(metadata)
+            if (!captureGate.accepted) {
+                clearCandidateWindow()
+                val reason = captureGate.rejectionReason ?: ScanRejectionReason.WAIT_FOCUS
+                emitRejection(
+                    reason = reason,
+                    message = when (reason) {
+                        ScanRejectionReason.WAIT_EXPOSURE -> "camera exposure is converging"
+                        else -> "camera is focusing"
+                    },
+                    debugInfo = imageDebugInfo + captureDebugInfo + "failureStage=capture convergence",
+                )
+                return
+            }
+            val frame = frameAdapter?.invoke(image)
+                ?: CameraImageProxyFrameAdapter.fromImageProxy(
+                    image = image,
+                    orientationMode = options.analysisOrientationMode,
+                )
             val template = templateProvider()
             val frameDebugInfo = frame.debugInfo(template)
-            val result = processor.process(frame = frame, template = template)
-            onResult(result.copy(debugInfo = imageDebugInfo + frameDebugInfo + result.debugInfo))
+            val quality = qualityEvaluator.evaluate(frame)
+            lastLaplacianVariance.set(quality.metrics.rawLaplacianVariance)
+            val qualityDebugInfo = quality.debugInfo("frame")
+            if (options.enableFrameQualityGate && !quality.accepted) {
+                clearCandidateWindow()
+                val reason = quality.rejectionReason ?: ScanRejectionReason.RETAKE_BLUR
+                emitRejection(
+                    reason = reason,
+                    message = when (reason) {
+                        ScanRejectionReason.RETAKE_EXPOSURE -> "frame exposure is outside the safe range"
+                        else -> "frame is too blurry"
+                    },
+                    debugInfo = imageDebugInfo + captureDebugInfo + frameDebugInfo + qualityDebugInfo +
+                        "failureStage=frame quality",
+                )
+                return
+            }
+            val candidate = FrameCandidate(
+                frame = frame,
+                template = template,
+                qualityScore = quality.metrics.qualityScore,
+                frameIndex = currentFrameIndex,
+                debugInfo = imageDebugInfo + captureDebugInfo + frameDebugInfo + qualityDebugInfo,
+            )
+            val selected = selectCandidate(candidate, processedAtMs) ?: return
+            val result = processor.process(frame = selected.frame, template = selected.template)
+            onResult(
+                result.copy(
+                    debugInfo = selected.debugInfo +
+                        "candidateWindowMs=${options.candidateWindowMs}" +
+                        "selectedFrameIndex=${selected.frameIndex}" + result.debugInfo,
+                ),
+            )
         } catch (error: Throwable) {
             onError(error)
         } finally {
             busy.set(false)
             image.close()
         }
+    }
+
+    private fun selectCandidate(candidate: FrameCandidate, nowMs: Long): FrameCandidate? {
+        if (options.candidateWindowMs == 0L) return candidate
+        val startedAt = candidateWindowStartedAtMs
+        if (startedAt == null) {
+            candidateWindowStartedAtMs = nowMs
+            bestCandidate = candidate
+            return null
+        }
+        if (candidate.qualityScore > (bestCandidate?.qualityScore ?: Double.NEGATIVE_INFINITY)) {
+            bestCandidate = candidate
+        }
+        if (nowMs - startedAt < options.candidateWindowMs) return null
+        return bestCandidate.also { clearCandidateWindow() }
+    }
+
+    private fun clearCandidateWindow() {
+        candidateWindowStartedAtMs = null
+        bestCandidate = null
+    }
+
+    private fun emitRejection(
+        reason: ScanRejectionReason,
+        message: String,
+        debugInfo: List<String>,
+    ) {
+        onResult(AndroidOmrResult.rejected(reason = reason, message = message, debugInfo = debugInfo))
     }
 
     private fun tryEnterAnalysis(nowMs: Long): FrameGateDecision {
@@ -118,6 +201,8 @@ class AndroidOmrImageAnalyzer(
             "pixelStride=${yPlane?.pixelStride ?: "missing"}",
             "analysisOrientation=${CameraImageProxyFrameAdapter.analysisOrientation(options.analysisOrientationMode)}",
             options.requestedAnalysisResolutionLabel?.let { "requestedAnalysisResolution=$it" },
+            "candidateWindowMs=${options.candidateWindowMs}",
+            "frameQualityGate=${options.enableFrameQualityGate}",
         )
     }
 
@@ -174,4 +259,12 @@ class AndroidOmrImageAnalyzer(
         Busy,
         Throttled,
     }
+
+    private data class FrameCandidate(
+        val frame: MiniProgramFrame,
+        val template: TemplateState,
+        val qualityScore: Double,
+        val frameIndex: Long,
+        val debugInfo: List<String>,
+    )
 }

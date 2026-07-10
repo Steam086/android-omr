@@ -20,7 +20,7 @@ class RealImageScanTest {
         val frame = AndroidOmrRenderedImageFactory.loadPngAsFrame(file)
         println("Image size: ${frame.width}x${frame.height}")
 
-        val result = AndroidOmrEngine.scan(frame = frame, template = template)
+        val result = AndroidOmrEngine.scan(frame = frame, template = template, anchorMode = AnchorMode.LEGACY)
 
         println("=== Scan Result ===")
         println("success: ${result.success}")
@@ -73,7 +73,7 @@ class RealImageScanTest {
         }
         val frame = AndroidOmrRenderedImageFactory.loadPngAsFrame(file)
         val template = TemplateCollection.default().selectedTemplate.template
-        val result = AndroidOmrEngine.scan(frame = frame, template = template)
+        val result = AndroidOmrEngine.scan(frame = frame, template = template, anchorMode = AnchorMode.LEGACY)
         val anchors = result.anchors ?: run {
             println("No anchors found")
             return

@@ -50,6 +50,11 @@ data class CornerAnchorDiagnostics(
     val selectedLd: String,
     val selectedRu: String,
     val selectedRd: String,
+    val bestCombinationScore: Double?,
+    val runnerUpCombinationScore: Double?,
+    val combinationScoreGap: Double?,
+    val ambiguous: Boolean,
+    val runnerUpAnchors: String,
 ) {
     fun debugInfo(): List<String> =
         listOf(
@@ -74,7 +79,14 @@ data class CornerAnchorDiagnostics(
             "selectedLD=$selectedLd",
             "selectedRU=$selectedRu",
             "selectedRD=$selectedRd",
+            "legacyAnchorBestScore=${bestCombinationScore?.let(::format) ?: "none"}",
+            "legacyAnchorRunnerUpScore=${runnerUpCombinationScore?.let(::format) ?: "none"}",
+            "legacyAnchorScoreGap=${combinationScoreGap?.let(::format) ?: "none"}",
+            "legacyAnchorAmbiguous=$ambiguous",
+            "legacyAnchorRunnerUp=$runnerUpAnchors",
         )
+
+    private fun format(value: Double): String = "%.4f".format(java.util.Locale.US, value)
 }
 
 object CornerAnchorMatcher {
@@ -88,6 +100,8 @@ object CornerAnchorMatcher {
     private const val LOCAL_CONTRAST_DELTA = 40
     private const val MAX_SCAN_CANDIDATES_PER_KIND = 36
     private const val MAX_ANCHOR_CHOICES_PER_KIND = 12
+    private const val MIN_DISTINCT_COMBINATION_GAP = 3.0
+    private const val MIN_RELATIVE_COMBINATION_GAP = 0.08
 
     fun findAnchors(
         frame: MiniProgramFrame,
@@ -116,15 +130,23 @@ object CornerAnchorMatcher {
         val rd = findCandidates(frame, MiniProgramCornerKind.RD, threshold, includeTraceScan = false)
         val cornerElapsedMs = elapsedMs(cornerStartedAt)
         val searches = listOf(lu, ld, ru, rd)
-        val componentAnchors = chooseAnchors(lu.candidates, ld.candidates, ru.candidates, rd.candidates, expectedAspectRatio)
-        if (componentAnchors != null) {
+        val componentSelection = chooseAnchors(
+            lu.candidates,
+            ld.candidates,
+            ru.candidates,
+            rd.candidates,
+            expectedAspectRatio,
+        )
+        if (componentSelection.best != null) {
+            val componentAnchors = componentSelection.best.anchors
             return CornerAnchorMatchResult(
-                anchors = componentAnchors,
+                anchors = componentAnchors.takeUnless { componentSelection.ambiguous },
                 diagnostics = diagnostics(
                     totalStartedAt = totalStartedAt,
                     cornerElapsedMs = cornerElapsedMs,
                     searches = searches,
                     anchors = componentAnchors,
+                    selection = componentSelection,
                 ),
             )
         }
@@ -136,20 +158,22 @@ object CornerAnchorMatcher {
         val traceRd = findCandidates(frame, MiniProgramCornerKind.RD, threshold, includeTraceScan = true)
         val traceCornerElapsedMs = cornerElapsedMs + elapsedMs(traceStartedAt)
         val traceSearches = listOf(traceLu, traceLd, traceRu, traceRd)
-        val best = chooseAnchors(
+        val selection = chooseAnchors(
             traceLu.candidates,
             traceLd.candidates,
             traceRu.candidates,
             traceRd.candidates,
             expectedAspectRatio,
         )
+        val best = selection.best?.anchors
         return CornerAnchorMatchResult(
-            anchors = best,
+            anchors = best?.takeUnless { selection.ambiguous },
             diagnostics = diagnostics(
                 totalStartedAt = totalStartedAt,
                 cornerElapsedMs = traceCornerElapsedMs,
                 searches = traceSearches,
                 anchors = best,
+                selection = selection,
             ),
         )
     }
@@ -160,10 +184,11 @@ object CornerAnchorMatcher {
         ru: List<MiniProgramCornerCandidate>,
         rd: List<MiniProgramCornerCandidate>,
         expectedAspectRatio: Double?,
-    ): MiniProgramAnchors? {
-        if (lu.isEmpty() || ld.isEmpty() || ru.isEmpty() || rd.isEmpty()) return null
-        var best: MiniProgramAnchors? = null
-        var bestScore = Double.NEGATIVE_INFINITY
+    ): AnchorCandidateSelection {
+        if (lu.isEmpty() || ld.isEmpty() || ru.isEmpty() || rd.isEmpty()) {
+            return AnchorCandidateSelection(null, null, null, false)
+        }
+        val combinations = mutableListOf<ScoredAnchorCandidate>()
         for (a in lu.take(MAX_ANCHOR_CHOICES_PER_KIND)) {
             for (b in ld.take(MAX_ANCHOR_CHOICES_PER_KIND)) {
                 for (c in ru.take(MAX_ANCHOR_CHOICES_PER_KIND)) {
@@ -171,15 +196,17 @@ object CornerAnchorMatcher {
                         val check = MiniProgramGeometry.isQuad(a.point, b.point, c.point, d.point)
                         if (!check.accepted) continue
                         val score = anchorScore(a, b, c, d, check, expectedAspectRatio)
-                        if (score > bestScore) {
-                            bestScore = score
-                            best = MiniProgramAnchors(a, b, c, d, check)
-                        }
+                        combinations += ScoredAnchorCandidate(MiniProgramAnchors(a, b, c, d, check), score)
                     }
                 }
             }
         }
-        return best
+        return AnchorAmbiguityEvaluator.select(
+            candidates = combinations,
+            direction = AnchorScoreDirection.HIGHER_IS_BETTER,
+            absoluteMinimumGap = MIN_DISTINCT_COMBINATION_GAP,
+            relativeMinimumGap = MIN_RELATIVE_COMBINATION_GAP,
+        )
     }
 
     private fun anchorScore(
@@ -274,7 +301,13 @@ object CornerAnchorMatcher {
         val large = frame.width > 288
         val template = template(kind, large)
         val localThresholdRadius = if (large) LOCAL_THRESHOLD_RADIUS_LARGE else LOCAL_THRESHOLD_RADIUS_SMALL
-        val scanStep = if (large) 6 else 1
+        // Medium analysis frames need a denser grid so the scan cannot step over the outer
+        // endpoint of a right-hand bracket. Keep the wider stride only for large camera frames.
+        val scanStep = when {
+            frame.width > 800 -> 6
+            large -> 3
+            else -> 1
+        }
         val rowRange = when (kind) {
             MiniProgramCornerKind.LU, MiniProgramCornerKind.RU -> 10 until frame.height / 2 step scanStep
             MiniProgramCornerKind.LD, MiniProgramCornerKind.RD -> frame.height - 10 downTo frame.height / 2 + 1 step scanStep
@@ -773,6 +806,7 @@ object CornerAnchorMatcher {
         cornerElapsedMs: Long,
         searches: List<CandidateSearchResult>,
         anchors: MiniProgramAnchors?,
+        selection: AnchorCandidateSelection,
     ): CornerAnchorDiagnostics =
         CornerAnchorDiagnostics(
             totalScanElapsedMs = elapsedMs(totalStartedAt),
@@ -795,6 +829,11 @@ object CornerAnchorMatcher {
             selectedLd = anchors?.ld?.formatCandidate() ?: "none",
             selectedRu = anchors?.ru?.formatCandidate() ?: "none",
             selectedRd = anchors?.rd?.formatCandidate() ?: "none",
+            bestCombinationScore = selection.best?.score,
+            runnerUpCombinationScore = selection.runnerUp?.score,
+            combinationScoreGap = selection.scoreGap,
+            ambiguous = selection.ambiguous,
+            runnerUpAnchors = selection.runnerUp?.anchors?.formatAnchors() ?: "none",
         )
 
     private fun List<CandidateSearchResult>.firstCount(kind: MiniProgramCornerKind): Int =
@@ -805,6 +844,9 @@ object CornerAnchorMatcher {
 
     private fun MiniProgramCornerCandidate.formatCandidate(): String =
         "${point.column},${point.row} score=$length source=$source"
+
+    private fun MiniProgramAnchors.formatAnchors(): String =
+        listOf(lu, ru, ld, rd).joinToString("|") { "${it.point.column},${it.point.row}" }
 
     private fun finalAnchorSource(anchors: MiniProgramAnchors): String =
         listOf(anchors.lu, anchors.ld, anchors.ru, anchors.rd)

@@ -30,11 +30,10 @@ class AndroidOmrImageScanTest {
         val result = AndroidOmrEngine.scan(whiteFrame(width = 420, height = 320), templateForImageScan())
 
         assertFalse(result.success)
-        assertEquals("corner anchors not found", result.failureReason)
+        assertEquals(ScanRejectionReason.RETAKE_CODED_MARKERS, result.rejectionReason)
         assertNotNull(result.layout)
-        assertTrue(result.debugInfo.any { it.contains("corner anchors not found") })
-        assertTrue(result.debugInfo.any { it.startsWith("cornerElapsedMs=") })
-        assertTrue(result.debugInfo.any { it.startsWith("strongTraceCandidateCount=") })
+        assertTrue(result.debugInfo.any { it == "anchorPath=coded-marker-rejected" })
+        assertTrue(result.debugInfo.none { it == "anchorPath=solid-marker" || it == "anchorPath=l-bracket" })
     }
 
     @Test
@@ -140,12 +139,13 @@ class AndroidOmrImageScanTest {
         val result = AndroidOmrEngine.scan(
             frame = bitmap.toMiniProgramFrame(),
             template = templateForImageScan(),
+            anchorMode = AnchorMode.LEGACY,
         )
 
         assertFalse(result.success)
-        assertEquals("invalid card geometry: possible false anchors", result.failureReason)
+        assertEquals(ScanRejectionReason.RETAKE_LEGACY_MARKERS, result.rejectionReason)
         assertFalse(result.debugInfo.joinToString().contains("bubble read failed"))
-        assertTrue(result.debugInfo.any { it.contains("failureStage=geometry validation") })
+        assertTrue(result.debugInfo.any { it.contains("failureStage=corner") })
     }
 
     @Test
@@ -159,13 +159,12 @@ class AndroidOmrImageScanTest {
         val result = AndroidOmrEngine.scan(
             frame = frame,
             template = templateForImageScan(),
+            anchorMode = AnchorMode.LEGACY,
         )
 
         assertFalse(result.success)
-        assertEquals("invalid card geometry: possible false anchors", result.failureReason)
-        assertTrue(result.debugInfo.joinToString(), result.debugInfo.any { it == "failureDetail=card interior too dark or low contrast" })
-        assertTrue(result.debugInfo.any { it.startsWith("cardInteriorBrightness=") })
-        assertTrue(result.debugInfo.any { it == "cardInteriorValidationPassed=false" })
+        assertEquals(ScanRejectionReason.RETAKE_LEGACY_MARKERS, result.rejectionReason)
+        assertTrue(result.debugInfo.joinToString(), result.debugInfo.any { it == "failureStage=corner" })
         assertFalse(result.debugInfo.joinToString().contains("bubble read failed"))
     }
 
@@ -179,10 +178,11 @@ class AndroidOmrImageScanTest {
         val result = AndroidOmrEngine.scan(
             frame = bitmap.toMiniProgramFrame(),
             template = templateForImageScan(),
+            anchorMode = AnchorMode.LEGACY,
         )
 
         assertFalse(result.success)
-        assertEquals("corner anchors not found", result.failureReason)
+        assertEquals(ScanRejectionReason.RETAKE_LEGACY_MARKERS, result.rejectionReason)
         assertFalse(result.debugInfo.joinToString().contains("failureStage=cell size validation"))
         assertFalse(result.debugInfo.joinToString().contains("bubble read failed"))
         assertTrue(result.debugInfo.any { it.contains("failureStage=corner") })
@@ -244,6 +244,7 @@ class AndroidOmrImageScanTest {
         val result = AndroidOmrEngine.scan(
             frame = AndroidOmrRenderedImageFactory.loadPngAsFrame(file),
             template = TemplateState.default(),
+            anchorMode = AnchorMode.LEGACY,
         )
 
         assertTrue(result.debugInfo.isNotEmpty())
@@ -251,7 +252,7 @@ class AndroidOmrImageScanTest {
             val reason = result.failureReason.orEmpty()
             assertTrue(
                 "unexpected failure stage: $reason",
-                reason.startsWith("corner anchors not found") ||
+                reason.startsWith("legacy corner anchors not found") ||
                     reason.startsWith("grid failed:") ||
                     reason.startsWith("invalid card geometry:") ||
                     reason.startsWith("answer area failed:") ||
@@ -270,6 +271,7 @@ class AndroidOmrImageScanTest {
         val result = AndroidOmrEngine.scan(
             frame = AndroidOmrRenderedImageFactory.loadPngAsFrame(file),
             template = template,
+            anchorMode = AnchorMode.LEGACY,
         )
 
         assertTrue(result.failureReason ?: result.debugInfo.joinToString(), result.success)
@@ -551,8 +553,8 @@ class AndroidOmrImageScanTest {
         val fileName = "微信图片_20260707164730_464_10.png"
         var directory: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
         while (directory != null) {
-            val candidate = File(directory, fileName)
-            if (candidate.isFile) return candidate
+            val candidates = listOf(File(directory, "images/$fileName"), File(directory, fileName))
+            candidates.firstOrNull { it.isFile }?.let { return it }
             directory = directory.parentFile
         }
         return File(fileName)

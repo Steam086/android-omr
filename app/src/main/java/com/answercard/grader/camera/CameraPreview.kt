@@ -2,7 +2,9 @@ package com.answercard.grader.camera
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.TotalCaptureResult
 import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -27,6 +29,7 @@ fun CameraPreview(
     modifier: Modifier = Modifier,
     onFrame: ((Bitmap) -> Unit)? = null,
     analyzer: ImageAnalysis.Analyzer? = null,
+    captureMetadataTracker: CameraCaptureMetadataTracker? = null,
 ) {
     val context = LocalContext.current
     val executor = remember { Executors.newSingleThreadExecutor() }
@@ -62,10 +65,32 @@ fun CameraPreview(
             val analysisBuilder = ImageAnalysis.Builder()
                 .setResolutionSelector(resolutionSelector)
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            Camera2Interop.Extender(analysisBuilder).setCaptureRequestOption(
+            val camera2 = Camera2Interop.Extender(analysisBuilder)
+            camera2.setCaptureRequestOption(
                 CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
                 CameraAnalysisConfig.TargetFrameRateRange,
             )
+            camera2.setCaptureRequestOption(
+                CaptureRequest.CONTROL_AF_MODE,
+                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE,
+            )
+            camera2.setCaptureRequestOption(
+                CaptureRequest.CONTROL_AE_MODE,
+                CaptureRequest.CONTROL_AE_MODE_ON,
+            )
+            captureMetadataTracker?.let { tracker ->
+                camera2.setSessionCaptureCallback(
+                    object : CameraCaptureSession.CaptureCallback() {
+                        override fun onCaptureCompleted(
+                            session: CameraCaptureSession,
+                            request: CaptureRequest,
+                            result: TotalCaptureResult,
+                        ) {
+                            tracker.record(result)
+                        }
+                    },
+                )
+            }
             val analysis = analysisBuilder
                 .build()
                 .also {
@@ -94,6 +119,7 @@ fun CameraPreview(
         cameraProviderFuture.addListener(listener, ContextCompat.getMainExecutor(context))
 
         onDispose {
+            captureMetadataTracker?.clear()
             ProcessCameraProvider.getInstance(context).get().unbindAll()
             executor.shutdown()
         }

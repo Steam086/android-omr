@@ -314,14 +314,19 @@ class AndroidOmrImageAnalyzerTest {
     }
 
     @Test
-    fun analyzeProcessesEvenLowSharpnessFrames() {
-        // Blur is filtered by consensus downstream, not by dropping frames here: a flat,
-        // zero-variance frame must still reach the processor.
+    fun analyzeRejectsLowSharpnessFramesBeforeProcessor() {
         var processCount = 0
+        var received: AndroidOmrResult? = null
         val analyzer = AndroidOmrImageAnalyzer(
             templateProvider = { TemplateState.default() },
-            onResult = {},
-            frameAdapter = { MiniProgramFrame(width = 4, height = 4, pixels = IntArray(16) { 128 }) },
+            onResult = { received = it },
+            frameAdapter = {
+                MiniProgramFrame(
+                    width = 64,
+                    height = 64,
+                    pixels = IntArray(64 * 64) { index -> (index % 64) * 255 / 63 },
+                )
+            },
             processor = AndroidOmrFrameProcessor { _, _ ->
                 processCount++
                 result(success = true)
@@ -331,8 +336,66 @@ class AndroidOmrImageAnalyzerTest {
 
         analyzer.analyze(image)
 
-        assertEquals(1, processCount)
+        assertEquals(0, processCount)
+        assertEquals(ScanRejectionReason.RETAKE_BLUR, received?.rejectionReason)
         assertTrue(image.closed)
+    }
+
+    @Test
+    fun analyzeWaitsForAutofocusBeforeAdaptingFrame() {
+        var adapterCount = 0
+        var received: AndroidOmrResult? = null
+        val analyzer = AndroidOmrImageAnalyzer(
+            templateProvider = { TemplateState.default() },
+            onResult = { received = it },
+            frameAdapter = {
+                adapterCount++
+                MiniProgramFrame(width = 1, height = 1, pixels = intArrayOf(255))
+            },
+            captureMetadataProvider = {
+                FrameCaptureMetadata(
+                    timestampNs = it,
+                    focusState = CameraFocusState.SCANNING,
+                    exposureState = CameraExposureState.CONVERGED,
+                    focusRequired = true,
+                    exposureRequired = true,
+                    exposureTimeNs = 10_000_000L,
+                    iso = 100,
+                )
+            },
+        )
+
+        analyzer.analyze(FakeImageProxy(timestamp = 42L))
+
+        assertEquals(0, adapterCount)
+        assertEquals(ScanRejectionReason.WAIT_FOCUS, received?.rejectionReason)
+        assertTrue(received?.debugInfo.orEmpty().contains("afState=SCANNING"))
+    }
+
+    @Test
+    fun analyzeChoosesBestFrameAtEndOfCandidateWindow() {
+        var nowMs = 1_000L
+        val first = crispFrame(marker = 40)
+        val second = crispFrame(marker = 80)
+        val frames = ArrayDeque(listOf(first, second))
+        var processed: MiniProgramFrame? = null
+        val analyzer = AndroidOmrImageAnalyzer(
+            templateProvider = { TemplateState.default() },
+            onResult = {},
+            frameAdapter = { frames.removeFirst() },
+            processor = AndroidOmrFrameProcessor { frame, _ ->
+                processed = frame
+                result(success = true)
+            },
+            options = AndroidOmrAnalyzerOptions(minAnalyzeIntervalMs = 0L, candidateWindowMs = 400L),
+            nowMsProvider = { nowMs },
+        )
+
+        analyzer.analyze(FakeImageProxy(timestamp = 10L))
+        nowMs = 1_400L
+        analyzer.analyze(FakeImageProxy(timestamp = 20L))
+
+        assertSame(first, processed)
     }
 
     @Test
@@ -355,6 +418,15 @@ class AndroidOmrImageAnalyzerTest {
 
     // A hard black/white vertical split → strong Laplacian edge → high sharpness variance.
     private fun sharpPixels(): IntArray = IntArray(16) { index -> if (index % 4 < 2) 0 else 255 }
+
+    private fun crispFrame(marker: Int): MiniProgramFrame =
+        MiniProgramFrame(
+            width = 64,
+            height = 64,
+            pixels = IntArray(64 * 64) { index ->
+                if (index == 0) marker else if ((index / 64 / 4 + index % 64 / 4) % 2 == 0) 20 else 235
+            },
+        )
 
     private fun result(success: Boolean): AndroidOmrResult =
         AndroidOmrResult(

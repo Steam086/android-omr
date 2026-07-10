@@ -53,7 +53,8 @@ class SolidMarkerCardStabilityTest {
         var successes = 0
         for (seed in 1..8) {
             val frame = gaussianNoise(base, sigma = 3.0, seed = seed.toLong())
-            val result = AndroidOmrEngine.scan(frame, template)
+            val mode = if (markerStyle == CornerMarkerStyle.CODED) AnchorMode.CODED_ONLY else AnchorMode.LEGACY
+            val result = AndroidOmrEngine.scan(frame, template, mode)
             if (!result.success) continue
             successes += 1
             assertTrue("seed $seed path", result.debugInfo.contains(expectedAnchorPath))
