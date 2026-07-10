@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -257,84 +258,92 @@ fun ScanScreen(
             }
         }
 
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (hasCameraPermission) {
-                if (USE_NEW_ANDROID_OMR_ANALYZER) {
-                    CameraPreview(
-                        modifier = Modifier.fillMaxSize(),
-                        analyzer = androidOmrAnalyzer,
-                        captureMetadataTracker = captureMetadataTracker,
-                    )
-                } else {
-                    CameraPreview(
-                        modifier = Modifier.fillMaxSize(),
-                        onFrame = { bitmap ->
-                            val now = SystemClock.elapsedRealtime()
-                            if (now - lastScanAt >= 700L) {
-                                lastScanAt = now
-                                val result = OmrScanner.scan(bitmap, template, layout, scale = 3f)
-                                mainHandler.post {
-                                    displayResult = ScanDisplayResult.fromLegacyResult(result)
-                                    status = if (result == null) "未识别" else "已识别"
-                                    if (result != null) {
-                                        val handledKey =
-                                            "${result.examId.orEmpty()}:${result.grade.totalScore}/${result.grade.maxScore}"
-                                        if (handledKey != lastHandledKey) {
-                                            lastHandledKey = handledKey
-                                            if (!result.examId.isNullOrBlank()) {
-                                                recordStore.saveRecord(
-                                                    ScanRecord(
-                                                        templateId = templateId,
-                                                        templateName = template.name,
-                                                        examId = result.examId,
-                                                        totalScore = result.grade.totalScore,
-                                                        maxScore = result.grade.maxScore,
-                                                        scannedAt = LocalDateTime.now(),
-                                                    ),
-                                                )
-                                            }
-                                            if (soundEnabled) {
-                                                speaker.speak(
-                                                    ScoreSpeechText.build(
-                                                        totalScore = result.grade.totalScore,
-                                                        maxScore = result.grade.maxScore,
-                                                        examId = result.examId,
-                                                    ),
-                                                )
+        Column(Modifier.weight(1f).fillMaxWidth()) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(3f / 4f)
+                    .background(Color.Black),
+            ) {
+                if (hasCameraPermission) {
+                    if (USE_NEW_ANDROID_OMR_ANALYZER) {
+                        CameraPreview(
+                            modifier = Modifier.fillMaxSize(),
+                            analyzer = androidOmrAnalyzer,
+                            captureMetadataTracker = captureMetadataTracker,
+                        )
+                    } else {
+                        CameraPreview(
+                            modifier = Modifier.fillMaxSize(),
+                            onFrame = { bitmap ->
+                                val now = SystemClock.elapsedRealtime()
+                                if (now - lastScanAt >= 700L) {
+                                    lastScanAt = now
+                                    val result = OmrScanner.scan(bitmap, template, layout, scale = 3f)
+                                    mainHandler.post {
+                                        displayResult = ScanDisplayResult.fromLegacyResult(result)
+                                        status = if (result == null) "未识别" else "已识别"
+                                        if (result != null) {
+                                            val handledKey =
+                                                "${result.examId.orEmpty()}:${result.grade.totalScore}/${result.grade.maxScore}"
+                                            if (handledKey != lastHandledKey) {
+                                                lastHandledKey = handledKey
+                                                if (!result.examId.isNullOrBlank()) {
+                                                    recordStore.saveRecord(
+                                                        ScanRecord(
+                                                            templateId = templateId,
+                                                            templateName = template.name,
+                                                            examId = result.examId,
+                                                            totalScore = result.grade.totalScore,
+                                                            maxScore = result.grade.maxScore,
+                                                            scannedAt = LocalDateTime.now(),
+                                                        ),
+                                                    )
+                                                }
+                                                if (soundEnabled) {
+                                                    speaker.speak(
+                                                        ScoreSpeechText.build(
+                                                            totalScore = result.grade.totalScore,
+                                                            maxScore = result.grade.maxScore,
+                                                            examId = result.examId,
+                                                        ),
+                                                    )
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
-                        },
+                            },
+                        )
+                    }
+                    ScanViewfinderGuide(template, Modifier.fillMaxSize())
+                } else {
+                    PermissionPrompt(onRequestPermission = { launcher.launch(Manifest.permission.CAMERA) })
+                }
+
+                lockedScoreText?.let { locked ->
+                    Text(
+                        text = locked,
+                        color = Color.White,
+                        style = MaterialTheme.typography.displayMedium,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 24.dp)
+                            .background(Color(0x99000000), RoundedCornerShape(16.dp))
+                            .padding(horizontal = 24.dp, vertical = 8.dp),
                     )
                 }
-            } else {
-                PermissionPrompt(onRequestPermission = { launcher.launch(Manifest.permission.CAMERA) })
-            }
-
-            lockedScoreText?.let { locked ->
-                Text(
-                    text = locked,
-                    color = Color.White,
-                    style = MaterialTheme.typography.displayMedium,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 24.dp)
-                        .background(Color(0x99000000), RoundedCornerShape(16.dp))
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
-                )
-            }
-            if (!deviceStable) {
-                Text(
-                    text = "请持稳手机…",
-                    color = Color.Yellow,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .background(Color(0x99000000), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                )
+                if (!deviceStable) {
+                    Text(
+                        text = "请持稳手机…",
+                        color = Color.Yellow,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .background(Color(0x99000000), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
             }
 
             if (hasCameraPermission) {
@@ -343,7 +352,7 @@ fun ScanScreen(
                     status = status,
                     result = displayResult,
                     soundEnabled = soundEnabled,
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
         }
@@ -432,11 +441,13 @@ private fun ScanStatusPanel(
                 }
                 Text(if (soundEnabled) "声音：开" else "声音：关", color = Color.White, style = MaterialTheme.typography.bodyMedium)
             }
-            ScanResultTemplateView(
-                template = template,
-                result = result,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 300.dp),
-            )
+            if (result?.isRecognized == true) {
+                ScanResultTemplateView(
+                    template = template,
+                    result = result,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 300.dp),
+                )
+            }
             if (result != null) {
                 Text("考号：${result.examId ?: "无"}", color = Color.White)
                 result.friendlyMessage?.let { Text(it, color = Color.White) }
