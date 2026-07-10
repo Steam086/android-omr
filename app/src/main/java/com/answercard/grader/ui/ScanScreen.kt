@@ -188,6 +188,7 @@ fun ScanScreen(
                 candidateWindowMs = 0L,
                 analysisOrientationMode = analysisOrientationMode,
                 requestedAnalysisResolutionLabel = CameraAnalysisConfig.RequestedResolutionLabel,
+                minimumAnalysisResolution = CameraAnalysisConfig.MinimumResolution,
             ),
             processor = AndroidOmrFrameProcessor(anchorMode = anchorMode),
             captureMetadataProvider = captureMetadataTracker::metadataFor,

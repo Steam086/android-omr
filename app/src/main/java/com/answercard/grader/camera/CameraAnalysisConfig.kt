@@ -2,10 +2,12 @@ package com.answercard.grader.camera
 
 import android.util.Range
 import android.util.Size
+import com.answercard.grader.miniprogram.AnalysisResolution
 
 object CameraAnalysisConfig {
-    val RequestedResolution: Size = Size(1280, 960)
-    const val RequestedResolutionLabel: String = "1280x960"
+    val RequestedResolution: Size = Size(1920, 1440)
+    const val RequestedResolutionLabel: String = "1920x1440"
+    val MinimumResolution: AnalysisResolution = AnalysisResolution(1280, 960)
 
     // Auto-exposure frame-rate floor. Pinning the AE target to a steady 30fps caps the maximum
     // exposure time at ~1/30s, so the sensor cannot lengthen the shutter in dim light — that

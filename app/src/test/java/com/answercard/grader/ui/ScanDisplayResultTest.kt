@@ -20,6 +20,22 @@ import org.junit.Test
 
 class ScanDisplayResultTest {
     @Test
+    fun mapsLowAnalysisResolutionToMoveCloserMessage() {
+        val rejected = androidResult(
+            success = false,
+            examId = null,
+            totalScore = null,
+            maxScore = null,
+            failureReason = "analysis resolution is below minimum",
+        ).copy(rejectionReason = ScanRejectionReason.RETAKE_LOW_RESOLUTION)
+
+        val display = ScanDisplayResult.fromAndroidOmrResult(rejected)
+
+        assertEquals("当前相机分析分辨率不足，请靠近答题卡。", display.friendlyMessage)
+        assertEquals(null, display.scoreText)
+    }
+
+    @Test
     fun mapsStableRejectionCodeToActionableRetakeMessageWithoutScore() {
         val rejected = androidResult(
             success = false,

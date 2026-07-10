@@ -123,6 +123,8 @@ data class ScanDisplayResult(
                 rejectionReason == ScanRejectionReason.WAIT_EXPOSURE -> "正在调整曝光，请保持不动。"
                 rejectionReason == ScanRejectionReason.RETAKE_BLUR -> "画面模糊，请持稳后重拍。"
                 rejectionReason == ScanRejectionReason.RETAKE_EXPOSURE -> "光线过强或过暗，请调整光线后重拍。"
+                rejectionReason == ScanRejectionReason.RETAKE_LOW_RESOLUTION ->
+                    "当前相机分析分辨率不足，请靠近答题卡。"
                 rejectionReason == ScanRejectionReason.RETAKE_CODED_MARKERS ->
                     "角标不清晰，请完整对准四个编码角标后重拍。"
                 rejectionReason == ScanRejectionReason.RETAKE_LEGACY_MARKERS ->
