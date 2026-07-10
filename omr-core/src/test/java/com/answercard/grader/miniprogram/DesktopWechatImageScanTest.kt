@@ -32,6 +32,7 @@ class DesktopWechatImageScanTest {
         assertEquals(listOf("D"), result.answerArea?.questions?.single { it.questionIndex == 10 }?.selectedLabels)
         assertEquals(listOf("A"), result.answerArea?.questions?.single { it.questionIndex == 15 }?.selectedLabels)
         assertEquals(10.0, result.score?.totalScore ?: -1.0, 0.0)
+        assertEdgeRefinementReported(result)
     }
 
     @Test
@@ -49,6 +50,7 @@ class DesktopWechatImageScanTest {
         assertEquals("1234", result.admissionNumber?.digits)
         assertEquals(listOf("D"), result.answerArea?.questions?.single { it.questionIndex == 10 }?.selectedLabels)
         assertEquals(10.0, result.score?.totalScore ?: -1.0, 0.0)
+        assertEdgeRefinementReported(result)
     }
 
     @Test
@@ -110,10 +112,18 @@ class DesktopWechatImageScanTest {
         assertTrue("${file.name}: ${result.failureReason ?: result.debugInfo.joinToString()}", result.success)
         assertEquals("${file.name}: admission", "1233", result.admissionNumber?.digits)
         assertTrue("${file.name}: marker path", result.debugInfo.contains("anchorPath=solid-marker"))
+        assertEdgeRefinementReported(result, file.name)
         result.answerArea!!.questions.forEach { question ->
             val expected = if (question.questionIndex in listOf(0, 6, 14)) listOf("A") else emptyList()
             assertEquals("${file.name}: Q${question.questionIndex + 1}", expected, question.selectedLabels)
         }
+    }
+
+    private fun assertEdgeRefinementReported(result: AndroidOmrResult, label: String = "wechat photo") {
+        assertTrue(
+            "$label: edge refinement diagnostics missing: ${result.debugInfo.joinToString()}",
+            result.debugInfo.any { it == "edgeRefinement=active" || it == "edgeRefinement=fallback" },
+        )
     }
 
     private fun solidMarkerFiles(): List<File> = listOf(

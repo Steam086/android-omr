@@ -119,6 +119,7 @@ class ProjectedCellEdgeRefinerTest {
         val refined = ProjectedCellEdgeRefiner.refine(frame, original)
 
         assertGroupShift(original, refined, questionIndex = 0, expectedShift = 4.0)
+        assertEquals(0, refined.edgeRefinementUnsafeGroups)
         assertTrue(refined.debugInfo.contains("edgeRefinementQuestionGroups=1"))
     }
 

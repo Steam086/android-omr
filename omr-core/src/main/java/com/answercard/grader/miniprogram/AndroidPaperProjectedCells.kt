@@ -10,6 +10,8 @@ data class AndroidPaperProjectedCells(
     val questionCells: Map<AndroidPaperQuestionCellKey, MiniProgramCell>,
     val admissionNumberCells: Map<AndroidPaperAdmissionNumberCellKey, MiniProgramCell>,
     val debugInfo: List<String>,
+    val edgeRefinementUnsafeGroups: Int = 0,
+    val edgeRefinementEvaluatedGroups: Int = 0,
 ) {
     fun questionCell(mapping: AndroidPaperQuestionMapping): MiniProgramCell? =
         questionCells[AndroidPaperQuestionCellKey(mapping.questionIndex, mapping.optionIndex)]

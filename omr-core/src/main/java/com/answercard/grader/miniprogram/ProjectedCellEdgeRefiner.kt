@@ -31,17 +31,22 @@ object ProjectedCellEdgeRefiner {
         var refinedQuestionGroups = 0
         var refinedAdmissionGroups = 0
         var fallbackGroups = 0
+        var unsafeGroups = 0
         var acceptedObservations = 0
         var maxOffset = 0.0
+        val evaluatedGroups = cells.questionCells.keys.map { it.questionIndex }.distinct().size +
+            cells.admissionNumberCells.keys.map { it.digitIndex }.distinct().size
 
         cells.questionCells.entries
             .groupBy { it.key.questionIndex }
             .values
-            .forEach { entries ->
+            .forEach { unsortedEntries ->
+                val entries = unsortedEntries.sortedBy { it.key.optionIndex }
                 val result = refineGroup(frame, entries.map { it.value })
                 val refined = result.cells
                 if (refined == null) {
                     fallbackGroups += 1
+                    if (result.unsafe) unsafeGroups += 1
                 } else {
                     entries.zip(refined).forEach { (entry, cell) -> questionCells[entry.key] = cell }
                     refinedQuestionGroups += 1
@@ -53,11 +58,13 @@ object ProjectedCellEdgeRefiner {
         cells.admissionNumberCells.entries
             .groupBy { it.key.digitIndex }
             .values
-            .forEach { entries ->
+            .forEach { unsortedEntries ->
+                val entries = unsortedEntries.sortedBy { it.key.numberValue }
                 val result = refineGroup(frame, entries.map { it.value })
                 val refined = result.cells
                 if (refined == null) {
                     fallbackGroups += 1
+                    if (result.unsafe) unsafeGroups += 1
                 } else {
                     entries.zip(refined).forEach { (entry, cell) -> admissionCells[entry.key] = cell }
                     refinedAdmissionGroups += 1
@@ -70,11 +77,15 @@ object ProjectedCellEdgeRefiner {
         return AndroidPaperProjectedCells(
             questionCells = questionCells,
             admissionNumberCells = admissionCells,
+            edgeRefinementUnsafeGroups = cells.edgeRefinementUnsafeGroups + unsafeGroups,
+            edgeRefinementEvaluatedGroups = cells.edgeRefinementEvaluatedGroups + evaluatedGroups,
             debugInfo = cells.debugInfo + listOf(
                 "edgeRefinement=${if (active) "active" else "fallback"}",
                 "edgeRefinementQuestionGroups=$refinedQuestionGroups",
                 "edgeRefinementAdmissionGroups=$refinedAdmissionGroups",
                 "edgeRefinementFallbackGroups=$fallbackGroups",
+                "edgeRefinementUnsafeGroups=${cells.edgeRefinementUnsafeGroups + unsafeGroups}",
+                "edgeRefinementEvaluatedGroups=${cells.edgeRefinementEvaluatedGroups + evaluatedGroups}",
                 "edgeRefinementObservations=$acceptedObservations",
                 "edgeRefinementMaxOffset=${format(maxOffset)}",
             ),
@@ -110,6 +121,9 @@ object ProjectedCellEdgeRefiner {
         if (observations.map { it.sourceCell }.distinct().size < MIN_SOURCE_CELLS) return GroupRefinement.rejected()
 
         val filtered = rejectOffsetOutliers(observations)
+        if (hasStrongEvidenceWithoutConsistentPair(filtered, medianWidth)) {
+            return GroupRefinement.rejected(unsafe = true)
+        }
         if (filtered.size < MIN_OBSERVATIONS) return GroupRefinement.rejected()
         if (filtered.map { it.sourceCell }.distinct().size < MIN_SOURCE_CELLS) return GroupRefinement.rejected()
 
@@ -139,6 +153,7 @@ object ProjectedCellEdgeRefiner {
             cells = refined,
             acceptedObservations = filtered.size,
             maxOffset = endpointOffsets.maxOf(::abs),
+            unsafe = false,
         )
     }
 
@@ -211,6 +226,24 @@ object ProjectedCellEdgeRefiner {
         val mad = median(observations.map { abs(it.offset - offsetMedian) })
         val limit = maxOf(2.0, mad * 2.5)
         return observations.filter { abs(it.offset - offsetMedian) <= limit }
+    }
+
+    private fun hasStrongEvidenceWithoutConsistentPair(
+        observations: List<EdgeObservation>,
+        medianCellWidth: Double,
+    ): Boolean {
+        if (observations.size < MIN_OBSERVATIONS) return false
+        val sourceCells = observations.map { it.sourceCell }.toSet()
+        if (sourceCells.size < MIN_SOURCE_CELLS) return false
+        val maximumPairDifference = maxOf(2.0, medianCellWidth * 0.12)
+        val hasConsistentPair = observations
+            .groupBy { it.sourceCell }
+            .values
+            .any { sameCell ->
+                sameCell.size >= 2 &&
+                    sameCell.maxOf { it.offset } - sameCell.minOf { it.offset } <= maximumPairDifference
+            }
+        return !hasConsistentPair
     }
 
     private fun fit(observations: List<EdgeObservation>): ResidualModel? {
@@ -301,9 +334,10 @@ object ProjectedCellEdgeRefiner {
         val cells: List<MiniProgramCell>?,
         val acceptedObservations: Int,
         val maxOffset: Double,
+        val unsafe: Boolean,
     ) {
         companion object {
-            fun rejected() = GroupRefinement(null, 0, 0.0)
+            fun rejected(unsafe: Boolean = false) = GroupRefinement(null, 0, 0.0, unsafe)
         }
     }
 }
