@@ -143,7 +143,7 @@ class AndroidOmrImageScanTest {
         assertFalse(result.success)
         assertTrue(result.failureReason.orEmpty(), result.failureReason.orEmpty().startsWith("projected cell too small:"))
         assertFalse(result.failureReason.orEmpty().contains("bubble read failed"))
-        assertTrue(result.debugInfo.any { it.contains("failureStage=cell size validation") })
+        assertTrue(result.debugInfo.any { it.contains("failureStage=required cell validation") })
     }
 
     @Test
