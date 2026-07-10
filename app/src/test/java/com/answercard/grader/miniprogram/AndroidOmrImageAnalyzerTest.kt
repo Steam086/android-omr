@@ -411,7 +411,7 @@ class AndroidOmrImageAnalyzerTest {
     }
 
     @Test
-    fun analyzeRejectsLowSharpnessFramesBeforeProcessor() {
+    fun analyzeTreatsPreOmrBlurAsAdvisoryAndStillRunsProcessor() {
         var processCount = 0
         var received: AndroidOmrResult? = null
         val analyzer = AndroidOmrImageAnalyzer(
@@ -433,10 +433,32 @@ class AndroidOmrImageAnalyzerTest {
 
         analyzer.analyze(image)
 
-        assertEquals(0, processCount)
-        assertEquals(ScanRejectionReason.RETAKE_BLUR, received?.rejectionReason)
-        assertTrue(received?.debugInfo.orEmpty().contains("omrElapsedMs=skipped"))
+        assertEquals(1, processCount)
+        assertTrue(received?.success == true)
+        assertTrue(received?.debugInfo.orEmpty().contains("frameBlurAdvisory=true"))
+        assertFalse(received?.debugInfo.orEmpty().contains("omrElapsedMs=skipped"))
         assertTrue(image.closed)
+    }
+
+    @Test
+    fun analyzeStillRejectsUnsafeExposureBeforeProcessor() {
+        var processCount = 0
+        var received: AndroidOmrResult? = null
+        val analyzer = AndroidOmrImageAnalyzer(
+            templateProvider = { TemplateState.default() },
+            onResult = { received = it },
+            frameAdapter = { MiniProgramFrame(64, 64, IntArray(64 * 64)) },
+            processor = AndroidOmrFrameProcessor { _, _ ->
+                processCount++
+                result(success = true)
+            },
+        )
+
+        analyzer.analyze(FakeImageProxy())
+
+        assertEquals(0, processCount)
+        assertEquals(ScanRejectionReason.RETAKE_EXPOSURE, received?.rejectionReason)
+        assertTrue(received?.debugInfo.orEmpty().contains("omrElapsedMs=skipped"))
     }
 
     @Test

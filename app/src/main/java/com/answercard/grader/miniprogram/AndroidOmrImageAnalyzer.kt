@@ -100,19 +100,21 @@ class AndroidOmrImageAnalyzer(
             val quality = qualityEvaluator.evaluate(frame)
             val frameQualityElapsedMs = elapsedMs(frameQualityStartedAtNs)
             lastLaplacianVariance.set(quality.metrics.rawLaplacianVariance)
+            val frameBlurAdvisory = !quality.accepted &&
+                quality.rejectionReason == ScanRejectionReason.RETAKE_BLUR
             val qualityDebugInfo = quality.debugInfo("frame") + listOf(
                 "frameAdapterElapsedMs=$frameAdapterElapsedMs",
                 "frameQualityElapsedMs=$frameQualityElapsedMs",
+                "frameBlurAdvisory=$frameBlurAdvisory",
             )
-            if (options.enableFrameQualityGate && !quality.accepted) {
+            val hardFrameQualityFailure = options.enableFrameQualityGate &&
+                !quality.accepted &&
+                quality.rejectionReason == ScanRejectionReason.RETAKE_EXPOSURE
+            if (hardFrameQualityFailure) {
                 clearCandidateWindow()
-                val reason = quality.rejectionReason ?: ScanRejectionReason.RETAKE_BLUR
                 emitRejection(
-                    reason = reason,
-                    message = when (reason) {
-                        ScanRejectionReason.RETAKE_EXPOSURE -> "frame exposure is outside the safe range"
-                        else -> "frame is too blurry"
-                    },
+                    reason = ScanRejectionReason.RETAKE_EXPOSURE,
+                    message = "frame exposure is outside the safe range",
                     debugInfo = imageDebugInfo + captureDebugInfo + frameDebugInfo + qualityDebugInfo +
                         "omrElapsedMs=skipped" + "failureStage=frame quality" +
                         analyzerTimingDebug(analysisStartedAtNs),
