@@ -51,16 +51,16 @@ class ScanConsensusTrackerTest {
     }
 
     @Test
-    fun locksAfterFourConsistentFrames() {
+    fun locksAfterThreeConsistentFrames() {
         val tracker = ScanConsensusTracker()
-        repeat(3) { assertTrue(tracker.offer(result()) is ScanConsensusDecision.Pending) }
+        repeat(2) { assertTrue(tracker.offer(result()) is ScanConsensusDecision.Pending) }
         assertTrue(tracker.offer(result()) is ScanConsensusDecision.Locked)
     }
 
     @Test
-    fun requiresFourMatchingFramesInsideFiveFrameWindow() {
+    fun requiresThreeMatchingFramesInsideFourFrameWindow() {
         val tracker = ScanConsensusTracker()
-        listOf(4.0, 6.0, 4.0, 6.0, 4.0, 4.0).forEach { score ->
+        listOf(4.0, 6.0, 4.0).forEach { score ->
             assertTrue(tracker.offer(result(totalScore = score)) is ScanConsensusDecision.Pending)
         }
         val locked = tracker.offer(result(totalScore = 4.0))
@@ -74,7 +74,6 @@ class ScanConsensusTrackerTest {
         repeat(2) { tracker.offer(result()) }
         val pending = tracker.offer(result(success = false, cardVisible = true))
         assertEquals(2, (pending as ScanConsensusDecision.Pending).streak)
-        tracker.offer(result())
         assertTrue(tracker.offer(result()) is ScanConsensusDecision.Locked)
     }
 
@@ -82,13 +81,26 @@ class ScanConsensusTrackerTest {
     fun samplesOutsideTimeWindowExpire() {
         var nowMs = 0L
         val tracker = ScanConsensusTracker(nowMsProvider = { nowMs })
-        repeat(3) {
+        repeat(2) {
             tracker.offer(result())
             nowMs += 300L
         }
-        nowMs = 3_000L
+        nowMs = 3_301L
         val pending = tracker.offer(result())
         assertEquals(1, (pending as ScanConsensusDecision.Pending).streak)
+    }
+
+    @Test
+    fun slowValidResultsFitInsideThreeSecondWindow() {
+        var nowMs = 0L
+        val tracker = ScanConsensusTracker(nowMsProvider = { nowMs })
+
+        assertTrue(tracker.offer(result()) is ScanConsensusDecision.Pending)
+        nowMs = 1_100L
+        assertTrue(tracker.offer(result()) is ScanConsensusDecision.Pending)
+        nowMs = 2_200L
+
+        assertTrue(tracker.offer(result()) is ScanConsensusDecision.Locked)
     }
 
     @Test
@@ -114,7 +126,7 @@ class ScanConsensusTrackerTest {
     @Test
     fun anyNewReadingIsSuppressedWhileCardRemainsLocked() {
         val tracker = ScanConsensusTracker()
-        repeat(4) { tracker.offer(result()) }
+        repeat(3) { tracker.offer(result()) }
         assertTrue(tracker.offer(result()) is ScanConsensusDecision.AlreadyLocked)
         assertTrue(tracker.offer(result(totalScore = 8.0)) is ScanConsensusDecision.AlreadyLocked)
         assertTrue(tracker.offer(result(admission = "5678")) is ScanConsensusDecision.AlreadyLocked)
@@ -124,7 +136,7 @@ class ScanConsensusTrackerTest {
     fun cardMustBeAbsentBeforeNextCardCanLock() {
         var nowMs = 0L
         val tracker = ScanConsensusTracker(nowMsProvider = { nowMs })
-        repeat(4) { tracker.offer(result(admission = "1234")) }
+        repeat(3) { tracker.offer(result(admission = "1234")) }
 
         tracker.offer(result(success = false, cardVisible = false))
         nowMs = 899L
@@ -136,7 +148,7 @@ class ScanConsensusTrackerTest {
             tracker.offer(result(success = false, cardVisible = false)) is ScanConsensusDecision.CardCleared,
         )
 
-        repeat(3) { assertTrue(tracker.offer(result(admission = "5678")) is ScanConsensusDecision.Pending) }
+        repeat(2) { assertTrue(tracker.offer(result(admission = "5678")) is ScanConsensusDecision.Pending) }
         val locked = tracker.offer(result(admission = "5678"))
         assertTrue(locked is ScanConsensusDecision.Locked)
         assertTrue((locked as ScanConsensusDecision.Locked).signature.startsWith("5678|"))

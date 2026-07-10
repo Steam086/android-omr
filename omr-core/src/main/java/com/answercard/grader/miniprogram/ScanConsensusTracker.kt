@@ -15,9 +15,9 @@ sealed interface ScanConsensusDecision {
  * absent long enough to start a new scan session.
  */
 class ScanConsensusTracker(
-    private val requiredFrames: Int = 4,
-    private val windowSize: Int = 5,
-    private val maxWindowDurationMs: Long = 2_000L,
+    private val requiredFrames: Int = 3,
+    private val windowSize: Int = 4,
+    private val maxWindowDurationMs: Long = 3_000L,
     private val cardAbsentResetMs: Long = 900L,
     private val signatureProvider: (AndroidOmrResult) -> String? = Companion::signatureOf,
     private val nowMsProvider: () -> Long = { System.nanoTime() / 1_000_000L },
