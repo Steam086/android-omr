@@ -7,7 +7,6 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 object AndroidOmrEngine {
-    private const val MIN_PROJECTED_CELL_SIZE = 14
     private const val MIN_CARD_WIDTH = 160.0
     private const val MIN_CARD_HEIGHT = 120.0
     private const val MIN_CARD_AREA = 18_000.0
@@ -122,12 +121,13 @@ object AndroidOmrEngine {
                     solidMarks.debugInfo + "failureStage=legacy reference ambiguity",
             )
         }
-        val cellValidation = ProjectedCellSizeValidation.from(projectedCells)
+        val cellValidation = ProjectedCellSizeValidation.from(frame, projectedCells)
         val cellValidationDebugInfo = cellValidation.debugInfo()
         if (!cellValidation.isValid) {
             val reason = "projected cell too small: Q1A=${cellValidation.q1A.width}x${cellValidation.q1A.height}, " +
                 "min answer cell = ${cellValidation.minAnswer.width}x${cellValidation.minAnswer.height}, " +
-                "min admission cell = ${cellValidation.minAdmission.width}x${cellValidation.minAdmission.height}"
+                "min admission cell = ${cellValidation.minAdmission.width}x${cellValidation.minAdmission.height}; " +
+                "${cellValidation.failureReason}"
             return AndroidOmrResult.rejected(
                 reason = ScanRejectionReason.RETAKE_CELL_SIZE,
                 message = reason,
@@ -577,6 +577,7 @@ object AndroidOmrEngine {
     private data class CellSize(
         val width: Int,
         val height: Int,
+        val area: Int,
     )
 
     private data class ProjectedCellSizeValidation(
@@ -584,57 +585,66 @@ object AndroidOmrEngine {
         val minAdmission: CellSize,
         val hasAdmissionCells: Boolean,
         val q1A: CellSize,
+        val failureReason: String?,
     ) {
-        val isValid: Boolean =
-            minAnswer.width >= MIN_PROJECTED_CELL_SIZE &&
-                minAnswer.height >= MIN_PROJECTED_CELL_SIZE &&
-                (
-                    !hasAdmissionCells ||
-                        (minAdmission.width >= MIN_PROJECTED_CELL_SIZE && minAdmission.height >= MIN_PROJECTED_CELL_SIZE)
-                    )
+        val isValid: Boolean = failureReason == null
 
         fun debugInfo(): List<String> =
             listOf(
                 "minAnswerCell=${minAnswer.width}x${minAnswer.height}",
                 "minAdmissionCell=${minAdmission.width}x${minAdmission.height}",
                 "q1AProjectedCell=${q1A.width}x${q1A.height}",
+                "minAnswerCellArea=${minAnswer.area}",
+                "minAdmissionCellArea=${minAdmission.area}",
+                "cellSourceValidation=${failureReason ?: "accepted"}",
             )
 
         companion object {
-            fun from(projectedCells: AndroidPaperProjectedCells): ProjectedCellSizeValidation {
-                val answerSizes = projectedCells.questionCells.values.map(::cellSize)
-                val admissionSizes = projectedCells.admissionNumberCells.values.map(::cellSize)
+            fun from(frame: MiniProgramFrame, projectedCells: AndroidPaperProjectedCells): ProjectedCellSizeValidation {
+                val answerInspections = projectedCells.questionCells.values.map { inspect(frame, it) }
+                val admissionInspections = projectedCells.admissionNumberCells.values.map { inspect(frame, it) }
+                val answerSizes = answerInspections.map { it.size }
+                val admissionSizes = admissionInspections.map { it.size }
                 return ProjectedCellSizeValidation(
                     minAnswer = minCellSize(answerSizes),
                     minAdmission = minCellSize(admissionSizes),
                     hasAdmissionCells = admissionSizes.isNotEmpty(),
                     q1A = projectedCells.questionCells[AndroidPaperQuestionCellKey(questionIndex = 0, optionIndex = 0)]
-                        ?.let(::cellSize)
-                        ?: CellSize(width = 0, height = 0),
+                        ?.let { inspect(frame, it).size }
+                        ?: CellSize(width = 0, height = 0, area = 0),
+                    failureReason = (answerInspections + admissionInspections).firstNotNullOfOrNull { it.failureReason },
+                )
+            }
+
+            private fun inspect(frame: MiniProgramFrame, cell: MiniProgramCell): CellInspection {
+                val metrics = MiniProgramCellSampler.sourceMetrics(frame, cell)
+                return CellInspection(
+                    size = CellSize(
+                        width = metrics.width.roundToInt().coerceAtLeast(0),
+                        height = metrics.height.roundToInt().coerceAtLeast(0),
+                        area = metrics.area.roundToInt().coerceAtLeast(0),
+                    ),
+                    failureReason = MiniProgramCellSampler.validateSource(frame, cell, metrics),
                 )
             }
         }
     }
 
+    private data class CellInspection(
+        val size: CellSize,
+        val failureReason: String?,
+    )
+
     private fun minCellSize(sizes: List<CellSize>): CellSize =
         if (sizes.isEmpty()) {
-            CellSize(width = 0, height = 0)
+            CellSize(width = 0, height = 0, area = 0)
         } else {
             CellSize(
                 width = sizes.minOf { it.width },
                 height = sizes.minOf { it.height },
+                area = sizes.minOf { it.area },
             )
         }
-
-    private fun cellSize(cell: MiniProgramCell): CellSize =
-        CellSize(
-            width = ((distance(cell.leftTop, cell.rightTop) + distance(cell.leftBottom, cell.rightBottom)) / 2.0)
-                .roundToInt()
-                .coerceAtLeast(1),
-            height = ((distance(cell.leftTop, cell.leftBottom) + distance(cell.rightTop, cell.rightBottom)) / 2.0)
-                .roundToInt()
-                .coerceAtLeast(1),
-        )
 
     private fun averageDistance(a1: MiniProgramPoint, a2: MiniProgramPoint, b1: MiniProgramPoint, b2: MiniProgramPoint): Double =
         (distance(a1, a2) + distance(b1, b2)) / 2.0

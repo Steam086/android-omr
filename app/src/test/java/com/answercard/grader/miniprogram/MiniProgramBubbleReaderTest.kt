@@ -174,7 +174,7 @@ class MiniProgramBubbleReaderTest {
         assertEquals("cell points must be finite", MiniProgramBubbleReader.read(frame, invalidCell).failureReason)
         assertEquals("cell must be inside frame", MiniProgramBubbleReader.read(frame, outOfBoundsCell).failureReason)
         assertEquals(
-            "cell sample size must be at least 14 by 14, actual=4x4",
+            "source cell too small: minimum=10x8, actual=4.0x4.0",
             MiniProgramBubbleReader.read(frame, tooSmallCell).failureReason,
         )
         assertEquals("cell points must form a valid quadrilateral", MiniProgramBubbleReader.read(frame, reversedCell).failureReason)
