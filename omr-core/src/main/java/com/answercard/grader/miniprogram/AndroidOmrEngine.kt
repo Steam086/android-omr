@@ -98,7 +98,9 @@ object AndroidOmrEngine {
         )
         val unsafeEdgeGroups = projectedCells.edgeRefinementUnsafeGroups
         val evaluatedEdgeGroups = projectedCells.edgeRefinementEvaluatedGroups
-        if (unsafeEdgeGroups > 0 && evaluatedEdgeGroups > 0 && unsafeEdgeGroups * 2 >= evaluatedEdgeGroups) {
+        // Periodic edge aliasing affects almost every logical row, while low-resolution or
+        // reflective captures can lose paired edges in a minority of otherwise valid rows.
+        if (unsafeEdgeGroups > 0 && evaluatedEdgeGroups > 0 && unsafeEdgeGroups * 4 >= evaluatedEdgeGroups * 3) {
             val reason = "printed cell edges are ambiguous: unsafeGroups=$unsafeEdgeGroups/$evaluatedEdgeGroups"
             return AndroidOmrResult.rejected(
                 reason = ScanRejectionReason.RETAKE_CARD_GEOMETRY,
