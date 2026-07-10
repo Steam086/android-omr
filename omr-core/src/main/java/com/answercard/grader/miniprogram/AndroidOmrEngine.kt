@@ -90,41 +90,11 @@ object AndroidOmrEngine {
                     "geometryRejectionReason=$geometryFailure",
             )
         }
-        val cardQuality = CARD_QUALITY_EVALUATOR.evaluate(frame, anchors)
-        val cardQualityDebugInfo = cardQuality.debugInfo("card")
-        if (!cardQuality.accepted) {
-            val rejection = cardQuality.rejectionReason ?: ScanRejectionReason.RETAKE_BLUR
-            return AndroidOmrResult.rejected(
-                reason = rejection,
-                message = qualityFailureMessage(rejection),
-                layout = layout,
-                anchors = anchors,
-                grid = grid,
-                debugInfo = debugInfo + cornerDebugInfo + geometryDebugInfo +
-                    cardQualityDebugInfo + "failureStage=card quality",
-            )
-        }
         val projectedCells = AndroidPaperProjectedCellBuilder.build(
             template = template,
             layout = layout,
             anchors = anchors,
         )
-        val solidMarks = AndroidSolidMarkDetector.detect(
-            frame = frame,
-            template = template,
-            anchors = anchors,
-        )
-        if (solidMarks.isReferenceAmbiguous) {
-            return AndroidOmrResult.rejected(
-                reason = ScanRejectionReason.LEGACY_ANCHOR_AMBIGUOUS,
-                message = "legacy anchor reference is ambiguous",
-                layout = layout,
-                anchors = anchors,
-                grid = grid,
-                debugInfo = debugInfo + cornerDebugInfo + geometryDebugInfo + cardQualityDebugInfo +
-                    solidMarks.debugInfo + "failureStage=legacy reference ambiguity",
-            )
-        }
         val cellValidation = AndroidRequiredCellValidator.validate(frame, projectedCells)
         val cellValidationDebugInfo = cellValidation.debugInfo()
         if (cellValidation.failure != null) {
@@ -145,11 +115,40 @@ object AndroidOmrEngine {
                 anchors = anchors,
                 grid = grid,
                 debugInfo = debugInfo + cornerDebugInfo + "grid=${layout.gridRows}x${layout.gridColumns}" +
-                    geometryDebugInfo + cardQualityDebugInfo + projectedCells.debugInfo + cellValidationDebugInfo +
-                    "failureStage=cell size validation" + reason,
+                    geometryDebugInfo + projectedCells.debugInfo + cellValidationDebugInfo +
+                    "failureStage=required cell validation" + reason,
             )
         }
-
+        val cardQuality = CARD_QUALITY_EVALUATOR.evaluate(frame, anchors)
+        val cardQualityDebugInfo = cardQuality.debugInfo("card")
+        if (!cardQuality.accepted) {
+            val rejection = cardQuality.rejectionReason ?: ScanRejectionReason.RETAKE_BLUR
+            return AndroidOmrResult.rejected(
+                reason = rejection,
+                message = qualityFailureMessage(rejection),
+                layout = layout,
+                anchors = anchors,
+                grid = grid,
+                debugInfo = debugInfo + cornerDebugInfo + geometryDebugInfo +
+                    cardQualityDebugInfo + "failureStage=card quality",
+            )
+        }
+        val solidMarks = AndroidSolidMarkDetector.detect(
+            frame = frame,
+            template = template,
+            anchors = anchors,
+        )
+        if (solidMarks.isReferenceAmbiguous) {
+            return AndroidOmrResult.rejected(
+                reason = ScanRejectionReason.LEGACY_ANCHOR_AMBIGUOUS,
+                message = "legacy anchor reference is ambiguous",
+                layout = layout,
+                anchors = anchors,
+                grid = grid,
+                debugInfo = debugInfo + cornerDebugInfo + geometryDebugInfo + cardQualityDebugInfo +
+                    solidMarks.debugInfo + "failureStage=legacy reference ambiguity",
+            )
+        }
         return scanWithLayoutAndGrid(
             frame = frame,
             template = template,

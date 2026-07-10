@@ -36,7 +36,7 @@ class ScanDisplayResultTest {
     }
 
     @Test
-    fun mapsLowAnalysisResolutionToMoveCloserMessage() {
+    fun mapsLowAnalysisResolutionToDeviceCompatibilityMessage() {
         val rejected = androidResult(
             success = false,
             examId = null,
@@ -47,7 +47,23 @@ class ScanDisplayResultTest {
 
         val display = ScanDisplayResult.fromAndroidOmrResult(rejected)
 
-        assertEquals("当前相机分析分辨率不足，请靠近答题卡。", display.friendlyMessage)
+        assertEquals("当前设备的相机分析分辨率不足，请更换设备。", display.friendlyMessage)
+        assertEquals(null, display.scoreText)
+    }
+
+    @Test
+    fun mapsCodedMarkerFailureToAtLeastThreeMarkerGuidance() {
+        val rejected = androidResult(
+            success = false,
+            examId = null,
+            totalScore = null,
+            maxScore = null,
+            failureReason = "coded markers not reliable",
+        ).copy(rejectionReason = ScanRejectionReason.RETAKE_CODED_MARKERS)
+
+        val display = ScanDisplayResult.fromAndroidOmrResult(rejected)
+
+        assertEquals("角标不清晰，请将至少三个清晰角标放入画面。", display.friendlyMessage)
         assertEquals(null, display.scoreText)
     }
 

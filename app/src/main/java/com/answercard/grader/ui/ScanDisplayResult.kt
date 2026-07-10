@@ -124,9 +124,9 @@ data class ScanDisplayResult(
                 rejectionReason == ScanRejectionReason.RETAKE_BLUR -> "画面模糊，请持稳或轻触卡片对焦。"
                 rejectionReason == ScanRejectionReason.RETAKE_EXPOSURE -> "光线过强或过暗，请调整光线后重拍。"
                 rejectionReason == ScanRejectionReason.RETAKE_LOW_RESOLUTION ->
-                    "当前相机分析分辨率不足，请靠近答题卡。"
+                    "当前设备的相机分析分辨率不足，请更换设备。"
                 rejectionReason == ScanRejectionReason.RETAKE_CODED_MARKERS ->
-                    "角标不清晰，请完整对准四个编码角标后重拍。"
+                    "角标不清晰，请将至少三个清晰角标放入画面。"
                 rejectionReason == ScanRejectionReason.RETAKE_LEGACY_MARKERS ->
                     "未可靠找到旧卡角标，请完整对准四角后重拍。"
                 rejectionReason == ScanRejectionReason.LEGACY_ANCHOR_AMBIGUOUS ->
