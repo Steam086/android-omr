@@ -16,7 +16,7 @@ class AndroidOmrImageAnalyzer(
     private val processor: AndroidOmrFrameProcessor = AndroidOmrFrameProcessor(),
     private val options: AndroidOmrAnalyzerOptions = AndroidOmrAnalyzerOptions(),
     private val frameAdapter: ((ImageProxy) -> MiniProgramFrame)? = null,
-    private val nowMsProvider: () -> Long = System::currentTimeMillis,
+    private val nowMsProvider: () -> Long = { System.nanoTime() / 1_000_000L },
     private val nanoTimeProvider: () -> Long = System::nanoTime,
     private val captureMetadataProvider: (Long) -> FrameCaptureMetadata? = { null },
     private val isDeviceStableProvider: () -> Boolean = { true },
@@ -98,7 +98,8 @@ class AndroidOmrImageAnalyzer(
                         else -> "frame is too blurry"
                     },
                     debugInfo = imageDebugInfo + captureDebugInfo + frameDebugInfo + qualityDebugInfo +
-                        "failureStage=frame quality" + analyzerTimingDebug(analysisStartedAtNs),
+                        "omrElapsedMs=skipped" + "failureStage=frame quality" +
+                        analyzerTimingDebug(analysisStartedAtNs),
                 )
                 return
             }
@@ -168,9 +169,11 @@ class AndroidOmrImageAnalyzer(
         if (!busy.compareAndSet(false, true)) return FrameGateDecision.Busy
         synchronized(intervalLock) {
             val lastAnalyzeStartedAt = lastAnalyzeStartedAtMs
+            val elapsedSinceLastAnalyzeMs = lastAnalyzeStartedAt?.let { nowMs - it }
             if (
-                lastAnalyzeStartedAt != null &&
-                nowMs - lastAnalyzeStartedAt < options.minAnalyzeIntervalMs
+                elapsedSinceLastAnalyzeMs != null &&
+                elapsedSinceLastAnalyzeMs >= 0L &&
+                elapsedSinceLastAnalyzeMs < options.minAnalyzeIntervalMs
             ) {
                 busy.set(false)
                 return FrameGateDecision.Throttled

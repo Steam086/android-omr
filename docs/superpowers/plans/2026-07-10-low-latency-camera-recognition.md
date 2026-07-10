@@ -426,4 +426,3 @@ git commit -m "docs(camera): document low-latency scan pipeline"
 ```
 
 Expected: only the intended documentation remains before the final commit; afterward the worktree is clean.
-

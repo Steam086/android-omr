@@ -92,6 +92,29 @@ class AndroidOmrImageAnalyzerTest {
     }
 
     @Test
+    fun analyzeRecoversWhenAnalyzeClockMovesBackward() {
+        var nowMs = 1_000L
+        var processCount = 0
+        val analyzer = AndroidOmrImageAnalyzer(
+            templateProvider = { TemplateState.default() },
+            onResult = {},
+            frameAdapter = { MiniProgramFrame(width = 1, height = 1, pixels = intArrayOf(255)) },
+            processor = AndroidOmrFrameProcessor { _, _ ->
+                processCount++
+                result(success = true)
+            },
+            options = AndroidOmrAnalyzerOptions(minAnalyzeIntervalMs = 300L),
+            nowMsProvider = { nowMs },
+        )
+
+        analyzer.analyze(FakeImageProxy())
+        nowMs = 900L
+        analyzer.analyze(FakeImageProxy())
+
+        assertEquals(2, processCount)
+    }
+
+    @Test
     fun analyzeSendsErrorsAndClosesImageProxy() {
         val image = FakeImageProxy()
         val expected = IllegalStateException("adapter failed")
@@ -377,6 +400,7 @@ class AndroidOmrImageAnalyzerTest {
 
         assertEquals(0, processCount)
         assertEquals(ScanRejectionReason.RETAKE_BLUR, received?.rejectionReason)
+        assertTrue(received?.debugInfo.orEmpty().contains("omrElapsedMs=skipped"))
         assertTrue(image.closed)
     }
 
