@@ -56,6 +56,23 @@ class AndroidOmrImageScanTest {
     }
 
     @Test
+    fun formalScanReadsProductionCardAtScalePointEightFive() {
+        val template = templateForImageScan()
+        val bitmap = filledProductionTemplateBitmap(template, scale = 0.85f)
+
+        val result = AndroidOmrEngine.scan(bitmap.toMiniProgramFrame(), template)
+
+        assertTrue(result.failureReason ?: result.debugInfo.joinToString(), result.success)
+        assertEquals("1234", result.admissionNumber?.digits)
+        assertEquals(listOf("A"), result.answerArea?.questions?.single { it.questionIndex == 0 }?.selectedLabels)
+        assertEquals(listOf("B"), result.answerArea?.questions?.single { it.questionIndex == 1 }?.selectedLabels)
+        assertEquals(listOf("C"), result.answerArea?.questions?.single { it.questionIndex == 5 }?.selectedLabels)
+        assertEquals(listOf("D"), result.answerArea?.questions?.single { it.questionIndex == 10 }?.selectedLabels)
+        assertEquals(listOf("A"), result.answerArea?.questions?.single { it.questionIndex == 15 }?.selectedLabels)
+        assertEquals(10.0, result.score?.totalScore ?: -1.0, 0.0)
+    }
+
+    @Test
     fun formalScanReadsRenderedProductionImageRotated180Degrees() {
         val template = templateForImageScan()
         val bitmap = filledProductionTemplateBitmap(template, scale = 3f)
@@ -126,7 +143,7 @@ class AndroidOmrImageScanTest {
         assertFalse(result.success)
         assertTrue(result.failureReason.orEmpty(), result.failureReason.orEmpty().startsWith("projected cell too small:"))
         assertFalse(result.failureReason.orEmpty().contains("bubble read failed"))
-        assertTrue(result.debugInfo.any { it.contains("failureStage=cell size validation") })
+        assertTrue(result.debugInfo.any { it.contains("failureStage=required cell validation") })
     }
 
     @Test

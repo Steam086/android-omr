@@ -10,11 +10,46 @@ import androidx.camera.core.impl.utils.ExifData
 import com.answercard.grader.template.TemplateState
 import java.nio.ByteBuffer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AndroidOmrImageAnalyzerTest {
+    @Test
+    fun analyzeRejectsActualFrameBelowMinimumResolutionBeforeOmr() {
+        var processCount = 0
+        var received: AndroidOmrResult? = null
+        val analyzer = AndroidOmrImageAnalyzer(
+            templateProvider = { TemplateState.default() },
+            onResult = { received = it },
+            frameAdapter = {
+                MiniProgramFrame(
+                    width = 640,
+                    height = 480,
+                    pixels = IntArray(640 * 480) { 255 },
+                )
+            },
+            processor = AndroidOmrFrameProcessor { _, _ ->
+                processCount++
+                result(success = true)
+            },
+            options = AndroidOmrAnalyzerOptions(
+                minimumAnalysisResolution = AnalysisResolution(1280, 960),
+                enableFrameQualityGate = false,
+            ),
+        )
+
+        analyzer.analyze(FakeImageProxy())
+
+        assertEquals(0, processCount)
+        assertFalse(received?.success ?: true)
+        assertEquals(null, received?.score)
+        assertEquals(ScanRejectionReason.RETAKE_LOW_RESOLUTION, received?.rejectionReason)
+        assertTrue(received?.debugInfo.orEmpty().contains("actualAnalysisResolution=640x480"))
+        assertTrue(received?.debugInfo.orEmpty().contains("minimumAnalysisResolution=1280x960"))
+    }
+
     @Test
     fun analyzeSendsResultAndClosesImageProxy() {
         val image = FakeImageProxy()
@@ -376,7 +411,7 @@ class AndroidOmrImageAnalyzerTest {
     }
 
     @Test
-    fun analyzeRejectsLowSharpnessFramesBeforeProcessor() {
+    fun analyzeTreatsPreOmrBlurAsAdvisoryAndStillRunsProcessor() {
         var processCount = 0
         var received: AndroidOmrResult? = null
         val analyzer = AndroidOmrImageAnalyzer(
@@ -398,10 +433,32 @@ class AndroidOmrImageAnalyzerTest {
 
         analyzer.analyze(image)
 
-        assertEquals(0, processCount)
-        assertEquals(ScanRejectionReason.RETAKE_BLUR, received?.rejectionReason)
-        assertTrue(received?.debugInfo.orEmpty().contains("omrElapsedMs=skipped"))
+        assertEquals(1, processCount)
+        assertTrue(received?.success == true)
+        assertTrue(received?.debugInfo.orEmpty().contains("frameBlurAdvisory=true"))
+        assertFalse(received?.debugInfo.orEmpty().contains("omrElapsedMs=skipped"))
         assertTrue(image.closed)
+    }
+
+    @Test
+    fun analyzeStillRejectsUnsafeExposureBeforeProcessor() {
+        var processCount = 0
+        var received: AndroidOmrResult? = null
+        val analyzer = AndroidOmrImageAnalyzer(
+            templateProvider = { TemplateState.default() },
+            onResult = { received = it },
+            frameAdapter = { MiniProgramFrame(64, 64, IntArray(64 * 64)) },
+            processor = AndroidOmrFrameProcessor { _, _ ->
+                processCount++
+                result(success = true)
+            },
+        )
+
+        analyzer.analyze(FakeImageProxy())
+
+        assertEquals(0, processCount)
+        assertEquals(ScanRejectionReason.RETAKE_EXPOSURE, received?.rejectionReason)
+        assertTrue(received?.debugInfo.orEmpty().contains("omrElapsedMs=skipped"))
     }
 
     @Test

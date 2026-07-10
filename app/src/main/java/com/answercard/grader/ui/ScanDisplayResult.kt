@@ -121,16 +121,20 @@ data class ScanDisplayResult(
                 rejectionReason == ScanRejectionReason.WAIT_STABILITY -> "请持稳手机。"
                 rejectionReason == ScanRejectionReason.WAIT_FOCUS -> "正在对焦，请保持不动。"
                 rejectionReason == ScanRejectionReason.WAIT_EXPOSURE -> "正在调整曝光，请保持不动。"
-                rejectionReason == ScanRejectionReason.RETAKE_BLUR -> "画面模糊，请持稳后重拍。"
+                rejectionReason == ScanRejectionReason.RETAKE_BLUR -> "画面模糊，请持稳或轻触卡片对焦。"
                 rejectionReason == ScanRejectionReason.RETAKE_EXPOSURE -> "光线过强或过暗，请调整光线后重拍。"
+                rejectionReason == ScanRejectionReason.RETAKE_LOW_RESOLUTION ->
+                    "当前设备的相机分析分辨率不足，请更换设备。"
                 rejectionReason == ScanRejectionReason.RETAKE_CODED_MARKERS ->
-                    "角标不清晰，请完整对准四个编码角标后重拍。"
+                    "角标不清晰，请将至少三个清晰角标放入画面。"
                 rejectionReason == ScanRejectionReason.RETAKE_LEGACY_MARKERS ->
                     "未可靠找到旧卡角标，请完整对准四角后重拍。"
                 rejectionReason == ScanRejectionReason.LEGACY_ANCHOR_AMBIGUOUS ->
                     "旧卡定位有歧义，请调整角度和光线后重拍。"
                 rejectionReason == ScanRejectionReason.RETAKE_CARD_GEOMETRY ->
                     "答题卡位置或透视不可靠，请对正后重拍。"
+                rejectionReason == ScanRejectionReason.RETAKE_CARD_CLIPPED ->
+                    "请稍微远离，确保答题区域完整。"
                 rejectionReason == ScanRejectionReason.RETAKE_CELL_SIZE ->
                     "答题卡距离过远，请靠近后重拍。"
                 rejectionReason == ScanRejectionReason.RETAKE_READ ->

@@ -16,6 +16,10 @@ data class CodedCornerMarkerDiagnostics(
     val bitErrors: Map<CornerMarkerId, Int>,
     val inferredIds: List<CornerMarkerId>,
     val reprojectionRms: Double?,
+    val componentCount: Int,
+    val sizeAspectCandidateCount: Int,
+    val decodedCandidateCount: Int,
+    val selectedEdgeLengths: Map<CornerMarkerId, Double>,
 ) {
     fun debugInfo(): List<String> = listOf(
         "codedMarkerVersion=${CodedCornerMarker.VERSION}",
@@ -24,6 +28,10 @@ data class CodedCornerMarkerDiagnostics(
         "codedMarkerBitErrors=${bitErrors.entries.joinToString(separator = ",") { "${it.key}:${it.value}" }}",
         "codedMarkerInferred=${inferredIds.joinToString(separator = ",")}",
         "codedMarkerReprojectionRms=${reprojectionRms?.let(::format) ?: "none"}",
+        "codedMarkerComponents=$componentCount",
+        "codedMarkerSizeAspectCandidates=$sizeAspectCandidateCount",
+        "codedMarkerDecodedCandidates=$decodedCandidateCount",
+        "codedMarkerSelectedEdgeLengths=${selectedEdgeLengths.entries.joinToString(separator = ",") { "${it.key}:${format(it.value)}" }}",
     )
 
     private fun format(value: Double): String = "%.3f".format(java.util.Locale.US, value)
@@ -58,8 +66,8 @@ object CodedCornerMarkerDetector {
         layout: CardLayout,
     ): CodedCornerMarkerMatchResult {
         val threshold = MiniProgramGeometry.threshold(frame)
-        val decoded = findCandidates(frame, threshold)
-        val selected = decoded
+        val discovery = findCandidates(frame, threshold)
+        val selected = discovery.decoded
             .groupBy { it.id }
             .mapValues { (_, candidates) ->
                 candidates.minWithOrNull(
@@ -68,7 +76,12 @@ object CodedCornerMarkerDetector {
                         .thenByDescending { it.edgeLength },
                 )!!
             }
-        val emptyDiagnostics = diagnostics(selected, inferred = emptyList(), reprojectionRms = null)
+        val emptyDiagnostics = diagnostics(
+            selected = selected,
+            inferred = emptyList(),
+            reprojectionRms = null,
+            discovery = discovery,
+        )
         if (selected.size < MIN_UNIQUE_MARKERS) {
             return CodedCornerMarkerMatchResult(anchors = null, diagnostics = emptyDiagnostics)
         }
@@ -92,6 +105,7 @@ object CodedCornerMarkerDetector {
             selected = selected,
             inferred = CornerMarkerId.entries.filterNot(selected::containsKey),
             reprojectionRms = reprojectionRms,
+            discovery = discovery,
         )
         if (reprojectionRms > maxOf(2.5, averageMarkerLength * MAX_REPROJECTION_MARKER_RATIO)) {
             return CodedCornerMarkerMatchResult(anchors = null, diagnostics = diagnostics)
@@ -147,11 +161,12 @@ object CodedCornerMarkerDetector {
         )
     }
 
-    private fun findCandidates(frame: MiniProgramFrame, threshold: Int): List<DecodedCandidate> {
+    private fun findCandidates(frame: MiniProgramFrame, threshold: Int): CandidateDiscovery {
         val minimumDimension = minOf(frame.width, frame.height)
         val minimumSize = maxOf(12, (minimumDimension * MIN_SIZE_RATIO).toInt())
         val maximumSize = maxOf(minimumSize, (minimumDimension * MAX_SIZE_RATIO).toInt())
-        return MiniProgramComponentScanner.scan(frame, threshold)
+        val components = MiniProgramComponentScanner.scan(frame, threshold)
+        val candidates = components
             .asSequence()
             .filter { it.fillRatio in MIN_COMPONENT_FILL..MAX_COMPONENT_FILL }
             .filter { it.rect.width in minimumSize..maximumSize && it.rect.height in minimumSize..maximumSize }
@@ -162,8 +177,12 @@ object CodedCornerMarkerDetector {
             .filter { it.rect.left > 0 && it.rect.top > 0 && it.rect.right < frame.width && it.rect.bottom < frame.height }
             .sortedByDescending { it.rect.width * it.rect.height }
             .take(MAX_CANDIDATES)
-            .mapNotNull { decodeCandidate(frame, threshold, it) }
             .toList()
+        return CandidateDiscovery(
+            componentCount = components.size,
+            sizeAspectCandidateCount = candidates.size,
+            decoded = candidates.mapNotNull { decodeCandidate(frame, threshold, it) },
+        )
     }
 
     private fun decodeCandidate(
@@ -282,12 +301,17 @@ object CodedCornerMarkerDetector {
         selected: Map<CornerMarkerId, DecodedCandidate>,
         inferred: List<CornerMarkerId>,
         reprojectionRms: Double?,
+        discovery: CandidateDiscovery,
     ): CodedCornerMarkerDiagnostics = CodedCornerMarkerDiagnostics(
         detectedIds = selected.keys.sortedBy { it.ordinal },
         rotations = selected.mapValues { it.value.rotation },
         bitErrors = selected.mapValues { it.value.bitErrors },
         inferredIds = inferred,
         reprojectionRms = reprojectionRms,
+        componentCount = discovery.componentCount,
+        sizeAspectCandidateCount = discovery.sizeAspectCandidateCount,
+        decodedCandidateCount = discovery.decoded.size,
+        selectedEdgeLengths = selected.mapValues { it.value.edgeLength },
     )
 
     private fun reprojectionRms(
@@ -327,6 +351,12 @@ object CodedCornerMarkerDetector {
         val id: CornerMarkerId,
         val rotation: Int,
         val bitErrors: Int,
+    )
+
+    private data class CandidateDiscovery(
+        val componentCount: Int,
+        val sizeAspectCandidateCount: Int,
+        val decoded: List<DecodedCandidate>,
     )
 
     private data class DecodedCandidate(

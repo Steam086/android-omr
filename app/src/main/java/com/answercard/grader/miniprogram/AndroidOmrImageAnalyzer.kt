@@ -80,23 +80,41 @@ class AndroidOmrImageAnalyzer(
             val frameAdapterElapsedMs = elapsedMs(frameAdapterStartedAtNs)
             val template = templateProvider()
             val frameDebugInfo = frame.debugInfo(template)
+            val minimumResolution = options.minimumAnalysisResolution
+            if (minimumResolution != null && !minimumResolution.accepts(frame.width, frame.height)) {
+                clearCandidateWindow()
+                emitRejection(
+                    reason = ScanRejectionReason.RETAKE_LOW_RESOLUTION,
+                    message = "analysis resolution is below minimum",
+                    debugInfo = imageDebugInfo + captureDebugInfo + frameDebugInfo +
+                        "frameAdapterElapsedMs=$frameAdapterElapsedMs" +
+                        "actualAnalysisResolution=${frame.width}x${frame.height}" +
+                        "minimumAnalysisResolution=$minimumResolution" +
+                        "omrElapsedMs=skipped" +
+                        "failureStage=analysis resolution" +
+                        analyzerTimingDebug(analysisStartedAtNs),
+                )
+                return
+            }
             val frameQualityStartedAtNs = nanoTimeProvider()
             val quality = qualityEvaluator.evaluate(frame)
             val frameQualityElapsedMs = elapsedMs(frameQualityStartedAtNs)
             lastLaplacianVariance.set(quality.metrics.rawLaplacianVariance)
+            val frameBlurAdvisory = !quality.accepted &&
+                quality.rejectionReason == ScanRejectionReason.RETAKE_BLUR
             val qualityDebugInfo = quality.debugInfo("frame") + listOf(
                 "frameAdapterElapsedMs=$frameAdapterElapsedMs",
                 "frameQualityElapsedMs=$frameQualityElapsedMs",
+                "frameBlurAdvisory=$frameBlurAdvisory",
             )
-            if (options.enableFrameQualityGate && !quality.accepted) {
+            val hardFrameQualityFailure = options.enableFrameQualityGate &&
+                !quality.accepted &&
+                quality.rejectionReason == ScanRejectionReason.RETAKE_EXPOSURE
+            if (hardFrameQualityFailure) {
                 clearCandidateWindow()
-                val reason = quality.rejectionReason ?: ScanRejectionReason.RETAKE_BLUR
                 emitRejection(
-                    reason = reason,
-                    message = when (reason) {
-                        ScanRejectionReason.RETAKE_EXPOSURE -> "frame exposure is outside the safe range"
-                        else -> "frame is too blurry"
-                    },
+                    reason = ScanRejectionReason.RETAKE_EXPOSURE,
+                    message = "frame exposure is outside the safe range",
                     debugInfo = imageDebugInfo + captureDebugInfo + frameDebugInfo + qualityDebugInfo +
                         "omrElapsedMs=skipped" + "failureStage=frame quality" +
                         analyzerTimingDebug(analysisStartedAtNs),
@@ -208,6 +226,7 @@ class AndroidOmrImageAnalyzer(
             "pixelStride=${yPlane?.pixelStride ?: "missing"}",
             "analysisOrientation=${CameraImageProxyFrameAdapter.analysisOrientation(options.analysisOrientationMode)}",
             options.requestedAnalysisResolutionLabel?.let { "requestedAnalysisResolution=$it" },
+            options.minimumAnalysisResolution?.let { "minimumAnalysisResolution=$it" },
             "candidateWindowMs=${options.candidateWindowMs}",
             "frameQualityGate=${options.enableFrameQualityGate}",
         )

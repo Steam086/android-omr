@@ -7,7 +7,6 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 object AndroidOmrEngine {
-    private const val MIN_PROJECTED_CELL_SIZE = 14
     private const val MIN_CARD_WIDTH = 160.0
     private const val MIN_CARD_HEIGHT = 120.0
     private const val MIN_CARD_AREA = 18_000.0
@@ -68,8 +67,12 @@ object AndroidOmrEngine {
             )
         }
         val cardGeometry = CardGeometry.from(template = template, anchors = anchors, frame = frame)
-        val geometryDebugInfo = cardGeometry.debugInfo()
-        val geometryFailure = cardGeometry.failureReason()
+        val requireAnchorBorderInset = CodedCardFramePolicy.requiresAnchorBorderInset(
+            anchorMode = anchorMode,
+            inferredCodedMarkerCount = anchorDecision.inferredCodedMarkerCount,
+        )
+        val geometryDebugInfo = cardGeometry.debugInfo(requireAnchorBorderInset)
+        val geometryFailure = cardGeometry.failureReason(requireAnchorBorderInset)
         if (geometryFailure != null) {
             val reason = if (geometryFailure == "anchors touch frame border") {
                 "invalid card geometry: anchors touch frame border"
@@ -87,6 +90,35 @@ object AndroidOmrEngine {
                     "geometryRejectionReason=$geometryFailure",
             )
         }
+        val projectedCells = AndroidPaperProjectedCellBuilder.build(
+            template = template,
+            layout = layout,
+            anchors = anchors,
+        )
+        val cellValidation = AndroidRequiredCellValidator.validate(frame, projectedCells)
+        val cellValidationDebugInfo = cellValidation.debugInfo()
+        if (cellValidation.failure != null) {
+            val clipped = cellValidation.failure == RequiredCellFailure.CLIPPED
+            val reason = if (clipped) {
+                "required cells are clipped by analysis frame: ${cellValidation.failureReason}"
+            } else {
+                "projected cell too small: ${cellValidation.failureReason}"
+            }
+            return AndroidOmrResult.rejected(
+                reason = if (clipped) {
+                    ScanRejectionReason.RETAKE_CARD_CLIPPED
+                } else {
+                    ScanRejectionReason.RETAKE_CELL_SIZE
+                },
+                message = reason,
+                layout = layout,
+                anchors = anchors,
+                grid = grid,
+                debugInfo = debugInfo + cornerDebugInfo + "grid=${layout.gridRows}x${layout.gridColumns}" +
+                    geometryDebugInfo + projectedCells.debugInfo + cellValidationDebugInfo +
+                    "failureStage=required cell validation" + reason,
+            )
+        }
         val cardQuality = CARD_QUALITY_EVALUATOR.evaluate(frame, anchors)
         val cardQualityDebugInfo = cardQuality.debugInfo("card")
         if (!cardQuality.accepted) {
@@ -101,11 +133,6 @@ object AndroidOmrEngine {
                     cardQualityDebugInfo + "failureStage=card quality",
             )
         }
-        val projectedCells = AndroidPaperProjectedCellBuilder.build(
-            template = template,
-            layout = layout,
-            anchors = anchors,
-        )
         val solidMarks = AndroidSolidMarkDetector.detect(
             frame = frame,
             template = template,
@@ -122,24 +149,6 @@ object AndroidOmrEngine {
                     solidMarks.debugInfo + "failureStage=legacy reference ambiguity",
             )
         }
-        val cellValidation = ProjectedCellSizeValidation.from(projectedCells)
-        val cellValidationDebugInfo = cellValidation.debugInfo()
-        if (!cellValidation.isValid) {
-            val reason = "projected cell too small: Q1A=${cellValidation.q1A.width}x${cellValidation.q1A.height}, " +
-                "min answer cell = ${cellValidation.minAnswer.width}x${cellValidation.minAnswer.height}, " +
-                "min admission cell = ${cellValidation.minAdmission.width}x${cellValidation.minAdmission.height}"
-            return AndroidOmrResult.rejected(
-                reason = ScanRejectionReason.RETAKE_CELL_SIZE,
-                message = reason,
-                layout = layout,
-                anchors = anchors,
-                grid = grid,
-                debugInfo = debugInfo + cornerDebugInfo + "grid=${layout.gridRows}x${layout.gridColumns}" +
-                    geometryDebugInfo + cardQualityDebugInfo + projectedCells.debugInfo + cellValidationDebugInfo +
-                    "failureStage=cell size validation" + reason,
-            )
-        }
-
         return scanWithLayoutAndGrid(
             frame = frame,
             template = template,
@@ -284,6 +293,7 @@ object AndroidOmrEngine {
                         rejectionReason = ScanRejectionReason.RETAKE_CODED_MARKERS,
                         failureReason = "coded markers not reliable",
                         debugInfo = debugInfo,
+                        inferredCodedMarkerCount = match.diagnostics.inferredIds.size,
                     )
                 } else {
                     val rotation = match.diagnostics.rotations.values.distinct().singleOrNull() ?: 0
@@ -293,6 +303,7 @@ object AndroidOmrEngine {
                         failureReason = null,
                         debugInfo = debugInfo,
                         normalizationQuarterTurns = rotation,
+                        inferredCodedMarkerCount = match.diagnostics.inferredIds.size,
                     )
                 }
             }
@@ -405,6 +416,7 @@ object AndroidOmrEngine {
         val failureReason: String?,
         val debugInfo: List<String>,
         val normalizationQuarterTurns: Int = 0,
+        val inferredCodedMarkerCount: Int = 0,
     )
 
     private val CARD_QUALITY_EVALUATOR = FrameQualityEvaluator(FrameQualityThresholds.CARD_ROI)
@@ -447,8 +459,11 @@ object AndroidOmrEngine {
             cardInteriorBrightness >= MIN_CARD_INTERIOR_BRIGHTNESS &&
                 cardInteriorContrast >= MIN_CARD_INTERIOR_ANCHOR_CONTRAST
 
-        fun failureReason(): String? {
-            if (listOf(lu, ru, ld, rd).any { it.touchesFrameBorder(frameWidth, frameHeight) }) {
+        fun failureReason(requireAnchorBorderInset: Boolean = true): String? {
+            if (
+                requireAnchorBorderInset &&
+                listOf(lu, ru, ld, rd).any { it.touchesFrameBorder(frameWidth, frameHeight) }
+            ) {
                 return "anchors touch frame border"
             }
             if (width < MIN_CARD_WIDTH || height < MIN_CARD_HEIGHT || area < MIN_CARD_AREA) {
@@ -467,7 +482,7 @@ object AndroidOmrEngine {
             return null
         }
 
-        fun debugInfo(): List<String> =
+        fun debugInfo(requireAnchorBorderInset: Boolean = true): List<String> =
             listOf(
                 "anchors=found",
                 "anchorLU=${lu.column},${lu.row}",
@@ -480,6 +495,7 @@ object AndroidOmrEngine {
                 "anchorAspectRatio=${format(aspectRatio)}",
                 "expectedTemplateRatio=${format(expectedTemplateRatio)}",
                 "anchorBorderInset=$MIN_ANCHOR_BORDER_INSET",
+                "anchorBorderInsetRequired=$requireAnchorBorderInset",
                 "cardInteriorBrightness=${format(cardInteriorBrightness)}",
                 "cornerAnchorBrightness=${format(cornerAnchorBrightness)}",
                 "cardInteriorContrast=${format(cardInteriorContrast)}",
@@ -573,68 +589,6 @@ object AndroidOmrEngine {
         }
         return if (count == 0) 0.0 else sum.toDouble() / count.toDouble()
     }
-
-    private data class CellSize(
-        val width: Int,
-        val height: Int,
-    )
-
-    private data class ProjectedCellSizeValidation(
-        val minAnswer: CellSize,
-        val minAdmission: CellSize,
-        val hasAdmissionCells: Boolean,
-        val q1A: CellSize,
-    ) {
-        val isValid: Boolean =
-            minAnswer.width >= MIN_PROJECTED_CELL_SIZE &&
-                minAnswer.height >= MIN_PROJECTED_CELL_SIZE &&
-                (
-                    !hasAdmissionCells ||
-                        (minAdmission.width >= MIN_PROJECTED_CELL_SIZE && minAdmission.height >= MIN_PROJECTED_CELL_SIZE)
-                    )
-
-        fun debugInfo(): List<String> =
-            listOf(
-                "minAnswerCell=${minAnswer.width}x${minAnswer.height}",
-                "minAdmissionCell=${minAdmission.width}x${minAdmission.height}",
-                "q1AProjectedCell=${q1A.width}x${q1A.height}",
-            )
-
-        companion object {
-            fun from(projectedCells: AndroidPaperProjectedCells): ProjectedCellSizeValidation {
-                val answerSizes = projectedCells.questionCells.values.map(::cellSize)
-                val admissionSizes = projectedCells.admissionNumberCells.values.map(::cellSize)
-                return ProjectedCellSizeValidation(
-                    minAnswer = minCellSize(answerSizes),
-                    minAdmission = minCellSize(admissionSizes),
-                    hasAdmissionCells = admissionSizes.isNotEmpty(),
-                    q1A = projectedCells.questionCells[AndroidPaperQuestionCellKey(questionIndex = 0, optionIndex = 0)]
-                        ?.let(::cellSize)
-                        ?: CellSize(width = 0, height = 0),
-                )
-            }
-        }
-    }
-
-    private fun minCellSize(sizes: List<CellSize>): CellSize =
-        if (sizes.isEmpty()) {
-            CellSize(width = 0, height = 0)
-        } else {
-            CellSize(
-                width = sizes.minOf { it.width },
-                height = sizes.minOf { it.height },
-            )
-        }
-
-    private fun cellSize(cell: MiniProgramCell): CellSize =
-        CellSize(
-            width = ((distance(cell.leftTop, cell.rightTop) + distance(cell.leftBottom, cell.rightBottom)) / 2.0)
-                .roundToInt()
-                .coerceAtLeast(1),
-            height = ((distance(cell.leftTop, cell.leftBottom) + distance(cell.rightTop, cell.rightBottom)) / 2.0)
-                .roundToInt()
-                .coerceAtLeast(1),
-        )
 
     private fun averageDistance(a1: MiniProgramPoint, a2: MiniProgramPoint, b1: MiniProgramPoint, b2: MiniProgramPoint): Double =
         (distance(a1, a2) + distance(b1, b2)) / 2.0

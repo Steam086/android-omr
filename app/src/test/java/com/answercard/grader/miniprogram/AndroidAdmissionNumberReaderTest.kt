@@ -73,7 +73,7 @@ class AndroidAdmissionNumberReaderTest {
     @Test
     fun rejectsLowContrastAdaptiveThresholdArtifact() {
         val fixture = Fixture(backgroundValue = 200)
-        fixture.mark(digitIndex = 0, numberValue = 1, markSize = 9, value = 179)
+        fixture.mark(digitIndex = 0, numberValue = 1, markSize = 12, value = 179)
 
         val result = AndroidAdmissionNumberReader.read(fixture.frame(), fixture.grid, fixture.layout)
 
@@ -297,10 +297,10 @@ class AndroidAdmissionNumberReaderTest {
 
         init {
             grid = MiniProgramGridBuilder.build(
-                lu = MiniProgramPoint(row = 0, column = 0),
-                ld = MiniProgramPoint(row = height - 1, column = 0),
-                ru = MiniProgramPoint(row = 0, column = width - 1),
-                rd = MiniProgramPoint(row = height - 1, column = width - 1),
+                lu = MiniProgramPoint(row = 1, column = 1),
+                ld = MiniProgramPoint(row = height - 2, column = 1),
+                ru = MiniProgramPoint(row = 1, column = width - 2),
+                rd = MiniProgramPoint(row = height - 2, column = width - 2),
                 rows = layout.gridRows,
                 columns = layout.gridColumns,
             )

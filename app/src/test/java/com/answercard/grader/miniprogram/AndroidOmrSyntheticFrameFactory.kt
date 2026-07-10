@@ -12,10 +12,10 @@ class AndroidOmrSyntheticFrameFactory(
     val frameWidth: Int = layout.gridColumns * CELL_SIZE
     val frameHeight: Int = layout.gridRows * CELL_SIZE
     val grid: MiniProgramGrid = MiniProgramGridBuilder.build(
-        lu = MiniProgramPoint(row = 0, column = 0),
-        ld = MiniProgramPoint(row = frameHeight - 1, column = 0),
-        ru = MiniProgramPoint(row = 0, column = frameWidth - 1),
-        rd = MiniProgramPoint(row = frameHeight - 1, column = frameWidth - 1),
+        lu = MiniProgramPoint(row = 1, column = 1),
+        ld = MiniProgramPoint(row = frameHeight - 2, column = 1),
+        ru = MiniProgramPoint(row = 1, column = frameWidth - 2),
+        rd = MiniProgramPoint(row = frameHeight - 2, column = frameWidth - 2),
         rows = layout.gridRows,
         columns = layout.gridColumns,
     )

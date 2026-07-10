@@ -1,15 +1,14 @@
 package com.answercard.grader.miniprogram
 
 import kotlin.math.floor
-import kotlin.math.roundToInt
-import kotlin.math.sqrt
 
 object MiniProgramBubbleReader {
     private const val BLACK_RATIO = 0.2
     private const val RANGE_PERCENT = 0.9
-    private const val MIN_SAMPLE_SIZE = 14
     private const val MIN_SOLID_NEIGHBOR_BLACK_COUNT = 8
-    private const val MIN_CONTAIN_RATIO = 0.05
+    // The reader now operates on a normalized 16x16 grid. Requiring a fifth of the central
+    // region keeps thin printed strokes and perspective noise from becoming solid fill evidence.
+    private const val MIN_CONTAIN_RATIO = 0.2
     private const val MIN_SOLID_BOUNDS_RATIO = 0.25
     private const val ABSOLUTE_DARK_MEAN_THRESHOLD = 80.0
 
@@ -18,23 +17,12 @@ object MiniProgramBubbleReader {
         cell: MiniProgramCell,
         edgeCleanDirections: Set<MiniProgramEdgeCleanDirection> = emptySet(),
     ): MiniProgramBubbleReadResult {
-        val failureReason = validate(frame, cell)
-        if (failureReason != null) {
-            return failure(failureReason, edgeCleanDirections)
-        }
+        val sample = MiniProgramCellSampler.sample(frame, cell)
+        if (sample.failureReason != null) return failure(sample.failureReason, edgeCleanDirections)
 
-        val sampleRows = sampleRows(cell)
-        val sampleColumns = sampleColumns(cell)
-        val grayValues = IntArray(sampleRows * sampleColumns)
-        var index = 0
-        for (row in 0 until sampleRows) {
-            val rowRatio = (row + 0.5) / sampleRows.toDouble()
-            for (column in 0 until sampleColumns) {
-                val columnRatio = (column + 0.5) / sampleColumns.toDouble()
-                val point = interpolate(cell, rowRatio, columnRatio)
-                grayValues[index++] = frame[floor(point.row).toInt(), floor(point.column).toInt()]
-            }
-        }
+        val sampleRows = sample.rows
+        val sampleColumns = sample.columns
+        val grayValues = sample.grayValues
 
         val blackThreshold = blackThreshold(grayValues)
         val binary = IntArray(grayValues.size) { i -> if (grayValues[i] >= blackThreshold) 1 else 0 }
@@ -202,73 +190,6 @@ object MiniProgramBubbleReader {
         val rowStart = sampleRows / 4
         val columnStart = sampleColumns / 4
         return (sampleRows - 2 * rowStart) * (sampleColumns - 2 * columnStart)
-    }
-
-    private fun interpolate(
-        cell: MiniProgramCell,
-        rowRatio: Double,
-        columnRatio: Double,
-    ): MiniProgramGridPoint =
-        MiniProgramGridBuilder.interpolate(
-            lu = cell.leftTop,
-            ld = cell.leftBottom,
-            ru = cell.rightTop,
-            rd = cell.rightBottom,
-            rowRatio = rowRatio,
-            columnRatio = columnRatio,
-        )
-
-    private fun sampleRows(cell: MiniProgramCell): Int =
-        ((distance(cell.leftTop, cell.leftBottom) + distance(cell.rightTop, cell.rightBottom)) / 2.0)
-            .roundToInt()
-            .coerceAtLeast(1)
-
-    private fun sampleColumns(cell: MiniProgramCell): Int =
-        ((distance(cell.leftTop, cell.rightTop) + distance(cell.leftBottom, cell.rightBottom)) / 2.0)
-            .roundToInt()
-            .coerceAtLeast(1)
-
-    private fun distance(a: MiniProgramGridPoint, b: MiniProgramGridPoint): Double {
-        val row = a.row - b.row
-        val column = a.column - b.column
-        return sqrt(row * row + column * column)
-    }
-
-    private fun validate(frame: MiniProgramFrame, cell: MiniProgramCell): String? {
-        val points = listOf(cell.leftTop, cell.rightTop, cell.leftBottom, cell.rightBottom)
-        if (points.any { !it.row.isFinite() || !it.column.isFinite() }) {
-            return "cell points must be finite"
-        }
-        if (points.any { it.row < 0.0 || it.row >= frame.height || it.column < 0.0 || it.column >= frame.width }) {
-            return "cell must be inside frame"
-        }
-        if (!isValidCell(cell)) {
-            return "cell points must form a valid quadrilateral"
-        }
-        val rows = sampleRows(cell)
-        val columns = sampleColumns(cell)
-        if (rows < MIN_SAMPLE_SIZE || columns < MIN_SAMPLE_SIZE) {
-            return "cell sample size must be at least $MIN_SAMPLE_SIZE by $MIN_SAMPLE_SIZE, actual=${columns}x$rows"
-        }
-        return null
-    }
-
-    private fun isValidCell(cell: MiniProgramCell): Boolean =
-        cell.rightTop.column > cell.leftTop.column &&
-            cell.rightBottom.column > cell.leftBottom.column &&
-            cell.leftBottom.row > cell.leftTop.row &&
-            cell.rightBottom.row > cell.rightTop.row &&
-            area(cell) > 0.0
-
-    private fun area(cell: MiniProgramCell): Double {
-        val points = listOf(cell.leftTop, cell.rightTop, cell.rightBottom, cell.leftBottom)
-        var twiceArea = 0.0
-        for (index in points.indices) {
-            val current = points[index]
-            val next = points[(index + 1) % points.size]
-            twiceArea += current.column * next.row - current.row * next.column
-        }
-        return kotlin.math.abs(twiceArea) / 2.0
     }
 
     private fun failure(

@@ -20,6 +20,54 @@ import org.junit.Test
 
 class ScanDisplayResultTest {
     @Test
+    fun mapsClippedCardToMoveSlightlyFartherMessage() {
+        val rejected = androidResult(
+            success = false,
+            examId = null,
+            totalScore = null,
+            maxScore = null,
+            failureReason = "required cells are clipped by analysis frame",
+        ).copy(rejectionReason = ScanRejectionReason.RETAKE_CARD_CLIPPED)
+
+        val display = ScanDisplayResult.fromAndroidOmrResult(rejected)
+
+        assertEquals("请稍微远离，确保答题区域完整。", display.friendlyMessage)
+        assertEquals(null, display.scoreText)
+    }
+
+    @Test
+    fun mapsLowAnalysisResolutionToDeviceCompatibilityMessage() {
+        val rejected = androidResult(
+            success = false,
+            examId = null,
+            totalScore = null,
+            maxScore = null,
+            failureReason = "analysis resolution is below minimum",
+        ).copy(rejectionReason = ScanRejectionReason.RETAKE_LOW_RESOLUTION)
+
+        val display = ScanDisplayResult.fromAndroidOmrResult(rejected)
+
+        assertEquals("当前设备的相机分析分辨率不足，请更换设备。", display.friendlyMessage)
+        assertEquals(null, display.scoreText)
+    }
+
+    @Test
+    fun mapsCodedMarkerFailureToAtLeastThreeMarkerGuidance() {
+        val rejected = androidResult(
+            success = false,
+            examId = null,
+            totalScore = null,
+            maxScore = null,
+            failureReason = "coded markers not reliable",
+        ).copy(rejectionReason = ScanRejectionReason.RETAKE_CODED_MARKERS)
+
+        val display = ScanDisplayResult.fromAndroidOmrResult(rejected)
+
+        assertEquals("角标不清晰，请将至少三个清晰角标放入画面。", display.friendlyMessage)
+        assertEquals(null, display.scoreText)
+    }
+
+    @Test
     fun mapsStableRejectionCodeToActionableRetakeMessageWithoutScore() {
         val rejected = androidResult(
             success = false,
@@ -31,7 +79,7 @@ class ScanDisplayResultTest {
 
         val display = ScanDisplayResult.fromAndroidOmrResult(rejected)
 
-        assertEquals("画面模糊，请持稳后重拍。", display.friendlyMessage)
+        assertEquals("画面模糊，请持稳或轻触卡片对焦。", display.friendlyMessage)
         assertEquals(null, display.scoreText)
     }
 
