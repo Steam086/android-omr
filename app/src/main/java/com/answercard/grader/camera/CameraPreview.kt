@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.TotalCaptureResult
+import android.view.MotionEvent
 import android.view.Surface
 import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.core.CameraSelector
@@ -45,13 +46,16 @@ fun CameraPreview(
     }
 
     DisposableEffect(context, previewView, executor) {
+        var disposed = false
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         val listener = Runnable {
+            if (disposed) return@Runnable
             require(currentOnFrame.value != null || currentAnalyzer.value != null) {
                 "CameraPreview requires onFrame or analyzer"
             }
             val cameraProvider = cameraProviderFuture.get()
             previewView.doOnLayout {
+                if (disposed) return@doOnLayout
                 val targetRotation = previewView.display?.rotation ?: Surface.ROTATION_0
                 val preview = Preview.Builder()
                     .setTargetRotation(targetRotation)
@@ -114,16 +118,31 @@ fun CameraPreview(
                 val viewPort = previewView.viewPort ?: return@doOnLayout
                 val group = CameraUseCaseGroupFactory.create(preview, analysis, viewPort)
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
+                val camera = cameraProvider.bindToLifecycle(
                     context.requireLifecycleOwner(),
                     CameraSelector.DEFAULT_BACK_CAMERA,
                     group,
                 )
+                fun focusAt(x: Float, y: Float) {
+                    if (previewView.width <= 0 || previewView.height <= 0) return
+                    val point = previewView.meteringPointFactory.createPoint(x, y)
+                    camera.cameraControl.startFocusAndMetering(CameraFocusActions.actionFor(point))
+                }
+                focusAt(previewView.width / 2f, previewView.height / 2f)
+                previewView.setOnTouchListener { view, event ->
+                    if (event.action == MotionEvent.ACTION_UP) {
+                        view.performClick()
+                        focusAt(event.x, event.y)
+                    }
+                    true
+                }
             }
         }
         cameraProviderFuture.addListener(listener, ContextCompat.getMainExecutor(context))
 
         onDispose {
+            disposed = true
+            previewView.setOnTouchListener(null)
             captureMetadataTracker?.clear()
             ProcessCameraProvider.getInstance(context).get().unbindAll()
             executor.shutdown()

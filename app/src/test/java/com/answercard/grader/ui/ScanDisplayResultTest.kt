@@ -63,7 +63,7 @@ class ScanDisplayResultTest {
 
         val display = ScanDisplayResult.fromAndroidOmrResult(rejected)
 
-        assertEquals("画面模糊，请持稳后重拍。", display.friendlyMessage)
+        assertEquals("画面模糊，请持稳或轻触卡片对焦。", display.friendlyMessage)
         assertEquals(null, display.scoreText)
     }
 

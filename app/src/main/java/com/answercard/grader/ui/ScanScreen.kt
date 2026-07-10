@@ -442,6 +442,11 @@ private fun ScanStatusPanel(
                 }
                 Text(if (soundEnabled) "声音：开" else "声音：关", color = Color.White, style = MaterialTheme.typography.bodyMedium)
             }
+            Text(
+                "轻触卡片可对焦",
+                color = Color.White.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.bodySmall,
+            )
             if (result?.isRecognized == true) {
                 ScanResultTemplateView(
                     template = template,

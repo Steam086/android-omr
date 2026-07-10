@@ -121,7 +121,7 @@ data class ScanDisplayResult(
                 rejectionReason == ScanRejectionReason.WAIT_STABILITY -> "请持稳手机。"
                 rejectionReason == ScanRejectionReason.WAIT_FOCUS -> "正在对焦，请保持不动。"
                 rejectionReason == ScanRejectionReason.WAIT_EXPOSURE -> "正在调整曝光，请保持不动。"
-                rejectionReason == ScanRejectionReason.RETAKE_BLUR -> "画面模糊，请持稳后重拍。"
+                rejectionReason == ScanRejectionReason.RETAKE_BLUR -> "画面模糊，请持稳或轻触卡片对焦。"
                 rejectionReason == ScanRejectionReason.RETAKE_EXPOSURE -> "光线过强或过暗，请调整光线后重拍。"
                 rejectionReason == ScanRejectionReason.RETAKE_LOW_RESOLUTION ->
                     "当前相机分析分辨率不足，请靠近答题卡。"
