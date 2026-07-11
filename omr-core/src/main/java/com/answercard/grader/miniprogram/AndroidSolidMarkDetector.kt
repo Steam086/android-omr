@@ -31,11 +31,14 @@ object AndroidSolidMarkDetector {
     private val OPTION_TOLERANCE_Y = (TemplateGeometry.QUESTION_ROW_STEP_Y - TemplateGeometry.OPTION_BOX_H) / 2f
     private val DIGIT_TOLERANCE_X = (TemplateGeometry.EXAM_DIGIT_STEP_X - TemplateGeometry.EXAM_DIGIT_BOX_W) / 2f
     private val DIGIT_TOLERANCE_Y = (TemplateGeometry.EXAM_ROW_STEP_Y - TemplateGeometry.EXAM_DIGIT_BOX_H) / 2f
+    private const val PROJECTED_CELL_TOLERANCE_RATIO = 0.15
+    private const val MIN_PROJECTED_DISTANCE_GAP = 0.20
 
     fun detect(
         frame: MiniProgramFrame,
         template: TemplateState,
         anchors: MiniProgramAnchors,
+        projectedCells: AndroidPaperProjectedCells,
     ): AndroidSolidMarkOverlay {
         val cardLayout = TemplateGeometry.buildLayout(template)
         val components = denseComponents(frame)
@@ -78,21 +81,26 @@ object AndroidSolidMarkDetector {
                 best.totalCenterDistance * MAX_AMBIGUOUS_CENTER_DISTANCE_RATIO,
             )
         val referenceAmbiguous = mappingDiffers && evidenceIsClose
+        val projected = matchProjectedComponents(components, projectedCells)
+        val projectedAmbiguous = projected.ambiguous
 
         return AndroidSolidMarkOverlay(
-            questionCells = best.questionCells,
-            admissionNumberCells = best.admissionNumberCells,
+            questionCells = projected.questionCells,
+            admissionNumberCells = projected.admissionNumberCells,
             debugInfo = listOf(
                 "solidMarkComponents=${components.size}",
                 "solidMarkReference=${best.referenceName}",
-                "solidQuestionMarks=${best.questionCells.size}",
-                "solidAdmissionMarks=${best.admissionNumberCells.size}",
+                "solidMarkMapping=projectedCells",
+                "solidQuestionMarks=${projected.questionCells.size}",
+                "solidAdmissionMarks=${projected.admissionNumberCells.size}",
+                "solidMarkProjectedMatches=${projected.matchedComponents}",
+                "solidMarkProjectedAmbiguous=$projectedAmbiguous",
                 "solidMarkRunnerUpReference=${runnerUp?.referenceName ?: "none"}",
                 "solidMarkMatchedComponentGap=${matchedComponentGap ?: "none"}",
                 "solidMarkCenterDistanceGap=${centerDistanceGap ?: "none"}",
-                "solidMarkReferenceAmbiguous=$referenceAmbiguous",
+                "solidMarkReferenceAmbiguous=${referenceAmbiguous || projectedAmbiguous}",
             ),
-            isReferenceAmbiguous = referenceAmbiguous,
+            isReferenceAmbiguous = referenceAmbiguous || projectedAmbiguous,
         )
     }
 
@@ -102,6 +110,7 @@ object AndroidSolidMarkDetector {
         val admissionNumberCells: Set<AndroidPaperAdmissionNumberCellKey>,
         val matchedComponents: Int,
         val totalCenterDistance: Double,
+        val ambiguous: Boolean = false,
     )
 
     private const val MAX_AMBIGUOUS_MATCHED_COMPONENT_GAP = 1
@@ -158,10 +167,139 @@ object AndroidSolidMarkDetector {
         )
     }
 
+    private fun matchProjectedComponents(
+        components: List<MiniProgramComponent>,
+        projectedCells: AndroidPaperProjectedCells,
+    ): ComponentMatchResult {
+        val questionCells = mutableSetOf<AndroidPaperQuestionCellKey>()
+        val admissionNumberCells = mutableSetOf<AndroidPaperAdmissionNumberCellKey>()
+        var matchedComponents = 0
+        var totalCenterDistance = 0.0
+        var ambiguous = false
+        components.forEach { component ->
+            val question = matchProjectedQuestionCell(
+                projectedCells = projectedCells,
+                row = component.centerRow,
+                column = component.centerColumn,
+            )
+            val admission = matchProjectedAdmissionCell(
+                projectedCells = projectedCells,
+                row = component.centerRow,
+                column = component.centerColumn,
+            )
+            if (question.ambiguous || admission.ambiguous) {
+                ambiguous = true
+                return@forEach
+            }
+            val questionMatch = question.match
+            val admissionMatch = admission.match
+            if (questionMatch != null && admissionMatch != null) {
+                ambiguous = true
+                return@forEach
+            }
+            questionMatch?.let { match ->
+                questionCells += match.key
+                totalCenterDistance += match.centerDistance
+            }
+            admissionMatch?.let { match ->
+                admissionNumberCells += match.key
+                totalCenterDistance += match.centerDistance
+            }
+            if (questionMatch != null || admissionMatch != null) matchedComponents += 1
+        }
+        return ComponentMatchResult(
+            referenceName = "projectedCells",
+            questionCells = questionCells,
+            admissionNumberCells = admissionNumberCells,
+            matchedComponents = matchedComponents,
+            totalCenterDistance = totalCenterDistance,
+            ambiguous = ambiguous,
+        )
+    }
+
     internal data class CellMatch<T>(
         val key: T,
         val centerDistance: Double,
     )
+
+    internal data class ProjectedCellDecision<T>(
+        val match: CellMatch<T>?,
+        val ambiguous: Boolean,
+    )
+
+    internal fun matchProjectedQuestionCell(
+        projectedCells: AndroidPaperProjectedCells,
+        row: Double,
+        column: Double,
+    ): ProjectedCellDecision<AndroidPaperQuestionCellKey> =
+        matchProjectedCell(projectedCells.questionCells, row, column)
+
+    internal fun matchProjectedAdmissionCell(
+        projectedCells: AndroidPaperProjectedCells,
+        row: Double,
+        column: Double,
+    ): ProjectedCellDecision<AndroidPaperAdmissionNumberCellKey> =
+        matchProjectedCell(projectedCells.admissionNumberCells, row, column)
+
+    private fun <T> matchProjectedCell(
+        cells: Map<T, MiniProgramCell>,
+        row: Double,
+        column: Double,
+    ): ProjectedCellDecision<T> {
+        val candidates = cells.mapNotNull { (key, cell) ->
+            val points = listOf(cell.leftTop, cell.rightTop, cell.rightBottom, cell.leftBottom)
+            if (points.any { !it.row.isFinite() || !it.column.isFinite() }) return@mapNotNull null
+            val centerRow = points.sumOf { it.row } / points.size.toDouble()
+            val centerColumn = points.sumOf { it.column } / points.size.toDouble()
+            val width = (
+                pointDistance(cell.leftTop, cell.rightTop) +
+                    pointDistance(cell.leftBottom, cell.rightBottom)
+                ) / 2.0
+            val height = (
+                pointDistance(cell.leftTop, cell.leftBottom) +
+                    pointDistance(cell.rightTop, cell.rightBottom)
+                ) / 2.0
+            if (width <= 0.0 || height <= 0.0) return@mapNotNull null
+            val toleranceScale = 1.0 + PROJECTED_CELL_TOLERANCE_RATIO * 2.0
+            val expanded = points.map { point ->
+                MiniProgramGridPoint(
+                    row = centerRow + (point.row - centerRow) * toleranceScale,
+                    column = centerColumn + (point.column - centerColumn) * toleranceScale,
+                )
+            }
+            if (!containsConvexQuad(expanded, row, column)) return@mapNotNull null
+            val normalizedX = (column - centerColumn) / width
+            val normalizedY = (row - centerRow) / height
+            CellMatch(key, kotlin.math.hypot(normalizedX, normalizedY))
+        }.sortedBy { it.centerDistance }
+        val best = candidates.firstOrNull() ?: return ProjectedCellDecision(null, ambiguous = false)
+        val runnerUp = candidates.getOrNull(1)
+        if (runnerUp != null && runnerUp.centerDistance - best.centerDistance < MIN_PROJECTED_DISTANCE_GAP) {
+            return ProjectedCellDecision(null, ambiguous = true)
+        }
+        return ProjectedCellDecision(best, ambiguous = false)
+    }
+
+    private fun pointDistance(first: MiniProgramGridPoint, second: MiniProgramGridPoint): Double =
+        kotlin.math.hypot(first.row - second.row, first.column - second.column)
+
+    private fun containsConvexQuad(
+        points: List<MiniProgramGridPoint>,
+        row: Double,
+        column: Double,
+    ): Boolean {
+        var hasPositive = false
+        var hasNegative = false
+        points.indices.forEach { index ->
+            val start = points[index]
+            val end = points[(index + 1) % points.size]
+            val cross = (end.column - start.column) * (row - start.row) -
+                (end.row - start.row) * (column - start.column)
+            if (cross > 1e-6) hasPositive = true
+            if (cross < -1e-6) hasNegative = true
+        }
+        return !(hasPositive && hasNegative)
+    }
 
     private fun denseComponents(frame: MiniProgramFrame): List<MiniProgramComponent> {
         val threshold = MiniProgramGeometry.threshold(frame)

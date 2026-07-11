@@ -91,10 +91,27 @@ object AndroidOmrEngine {
             )
         }
         val projectedCells = AndroidPaperProjectedCellBuilder.build(
+            frame = frame,
             template = template,
             layout = layout,
             anchors = anchors,
         )
+        val unsafeEdgeGroups = projectedCells.edgeRefinementUnsafeGroups
+        val evaluatedEdgeGroups = projectedCells.edgeRefinementEvaluatedGroups
+        // Periodic edge aliasing affects almost every logical row, while low-resolution or
+        // reflective captures can lose paired edges in a minority of otherwise valid rows.
+        if (unsafeEdgeGroups > 0 && evaluatedEdgeGroups > 0 && unsafeEdgeGroups * 4 >= evaluatedEdgeGroups * 3) {
+            val reason = "printed cell edges are ambiguous: unsafeGroups=$unsafeEdgeGroups/$evaluatedEdgeGroups"
+            return AndroidOmrResult.rejected(
+                reason = ScanRejectionReason.RETAKE_CARD_GEOMETRY,
+                message = reason,
+                layout = layout,
+                anchors = anchors,
+                grid = grid,
+                debugInfo = debugInfo + cornerDebugInfo + "grid=${layout.gridRows}x${layout.gridColumns}" +
+                    geometryDebugInfo + projectedCells.debugInfo + "failureStage=edge refinement" + reason,
+            )
+        }
         val cellValidation = AndroidRequiredCellValidator.validate(frame, projectedCells)
         val cellValidationDebugInfo = cellValidation.debugInfo()
         if (cellValidation.failure != null) {
@@ -137,6 +154,7 @@ object AndroidOmrEngine {
             frame = frame,
             template = template,
             anchors = anchors,
+            projectedCells = projectedCells,
         )
         if (solidMarks.isReferenceAmbiguous) {
             return AndroidOmrResult.rejected(

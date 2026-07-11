@@ -299,7 +299,7 @@ object CornerAnchorMatcher {
     ): CandidateSearchResult {
         val startedAt = System.nanoTime()
         val large = frame.width > 288
-        val template = template(kind, large)
+        val template = MiniProgramCornerTemplate.points(kind, large)
         val localThresholdRadius = if (large) LOCAL_THRESHOLD_RADIUS_LARGE else LOCAL_THRESHOLD_RADIUS_SMALL
         // Medium analysis frames need a denser grid so the scan cannot step over the outer
         // endpoint of a right-hand bracket. Keep the wider stride only for large camera frames.
@@ -390,7 +390,7 @@ object CornerAnchorMatcher {
         threshold: Int,
     ): List<MiniProgramCornerCandidate> {
         val large = frame.width > 288
-        val tmpl = template(kind, large)
+        val tmpl = MiniProgramCornerTemplate.points(kind, large)
         val mask = BooleanArray(frame.width * frame.height) { index ->
             frame.pixels[index] < threshold
         }
@@ -423,7 +423,7 @@ object CornerAnchorMatcher {
         row: Int,
         column: Int,
         threshold: Int,
-        template: List<TemplatePoint>,
+        template: List<MiniProgramCornerTemplatePoint>,
     ): Boolean {
         for (point in template) {
             val r = row + point.rowOffset
@@ -544,7 +544,7 @@ object CornerAnchorMatcher {
         row: Int,
         column: Int,
         threshold: Int,
-        template: List<TemplatePoint>,
+        template: List<MiniProgramCornerTemplatePoint>,
     ): Boolean {
         return template.all { point ->
             val value = frame[row + point.rowOffset, column + point.columnOffset]
@@ -652,12 +652,6 @@ object CornerAnchorMatcher {
         return length
     }
 
-    private data class TemplatePoint(
-        val rowOffset: Int,
-        val columnOffset: Int,
-        val expected: Int,
-    )
-
     private data class ComponentRect(
         val left: Int,
         val top: Int,
@@ -746,59 +740,6 @@ object CornerAnchorMatcher {
         if (!mask[index]) return tail
         queue[tail] = index
         return tail + 1
-    }
-
-    private fun template(kind: MiniProgramCornerKind, large: Boolean): List<TemplatePoint> {
-        val unit = if (large) 6 else 3
-        val base = when (kind) {
-            MiniProgramCornerKind.LU -> listOf(
-                Triple(0, 0, 0), Triple(-1, 0, 1), Triple(0, -1, 1), Triple(1, 1, 1),
-                Triple(0, 1, 0), Triple(-1, 1, 1), Triple(1, -1, 1), Triple(1, 0, 0),
-                Triple(2, 1, 1), Triple(1, 2, 1),
-            )
-            MiniProgramCornerKind.LD -> listOf(
-                Triple(0, 0, 0), Triple(-1, 0, 1), Triple(0, 1, 1), Triple(1, -1, 1),
-                Triple(1, 0, 0), Triple(0, -1, 0), Triple(1, 1, 1), Triple(-1, -1, 1),
-                Triple(2, -1, 1), Triple(1, -2, 1),
-            )
-            MiniProgramCornerKind.RU -> listOf(
-                Triple(0, 0, 0), Triple(1, 0, 1), Triple(0, -1, 1), Triple(-1, 1, 1),
-                Triple(0, 1, 0), Triple(-1, 0, 0), Triple(1, 1, 1), Triple(-1, -1, 1),
-                Triple(-1, 2, 1), Triple(-2, 1, 1),
-            )
-            MiniProgramCornerKind.RD -> listOf(
-                Triple(0, 0, 0), Triple(0, 1, 1), Triple(1, 0, 1), Triple(-1, -1, 1),
-                Triple(-1, 0, 0), Triple(0, -1, 0), Triple(-1, 1, 1), Triple(1, -1, 1),
-                Triple(-2, -1, 1), Triple(-1, -2, 1),
-            )
-        }
-        val refinements = when (kind) {
-            MiniProgramCornerKind.LU -> listOf(
-                Triple(0, 2, 0), Triple(2, 0, 0), Triple(-1, 2, 1), Triple(2, -1, 1),
-                Triple(1, 1 + unit / unit, 1), Triple(1 + unit / unit, 1, 1),
-                Triple(0, 4 / (if (large) 2 else 2), 0), Triple(4 / (if (large) 2 else 2), 0, 0),
-                Triple(-1, 4 / (if (large) 2 else 2), 1), Triple(4 / (if (large) 2 else 2), -1, 1),
-            )
-            MiniProgramCornerKind.LD -> listOf(
-                Triple(2, 0, 0), Triple(0, -2, 0), Triple(2, 1, 1), Triple(-1, -2, 1),
-                Triple(1 + unit / unit, -1, 1), Triple(1, -(1 + unit / unit), 1),
-                Triple(4 / (if (large) 2 else 2), 0, 0), Triple(0, -4 / (if (large) 2 else 2), 0),
-                Triple(4 / (if (large) 2 else 2), 1, 1), Triple(-1, -4 / (if (large) 2 else 2), 1),
-            )
-            MiniProgramCornerKind.RU -> listOf(
-                Triple(0, 2, 0), Triple(-2, 0, 0), Triple(1, 2, 1), Triple(-2, -1, 1),
-                Triple(-1, 1 + unit / unit, 1), Triple(-(1 + unit / unit), 1, 1),
-                Triple(0, 4 / (if (large) 2 else 2), 0), Triple(-4 / (if (large) 2 else 2), 0, 0),
-                Triple(1, 4 / (if (large) 2 else 2), 1), Triple(-4 / (if (large) 2 else 2), -1, 1),
-            )
-            MiniProgramCornerKind.RD -> listOf(
-                Triple(-2, 0, 0), Triple(0, -2, 0), Triple(-2, 1, 1), Triple(1, -2, 1),
-                Triple(-(1 + unit / unit), -1, 1), Triple(-1, -(1 + unit / unit), 1),
-                Triple(-4 / (if (large) 2 else 2), 0, 0), Triple(0, -4 / (if (large) 2 else 2), 0),
-                Triple(-4 / (if (large) 2 else 2), 1, 1), Triple(1, -4 / (if (large) 2 else 2), 1),
-            )
-        }
-        return (base + refinements).map { TemplatePoint(it.first * unit, it.second * unit, it.third) }
     }
 
     private fun diagnostics(

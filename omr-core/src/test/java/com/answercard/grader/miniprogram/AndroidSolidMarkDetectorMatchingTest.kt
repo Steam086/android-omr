@@ -5,7 +5,9 @@ import com.answercard.grader.template.TemplateGeometry
 import com.answercard.grader.template.TemplatePoint
 import com.answercard.grader.template.TemplateState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -82,4 +84,81 @@ class AndroidSolidMarkDetectorMatchingTest {
 
         assertEquals(AndroidPaperAdmissionNumberCellKey(0, 5), match?.key)
     }
+
+    @Test
+    fun imagePointMatchesTheRefinedProjectedQuestionCell() {
+        val cells = AndroidPaperProjectedCells(
+            questionCells = mapOf(
+                AndroidPaperQuestionCellKey(0, 0) to rectangularCell(left = 20.0, top = 30.0),
+                AndroidPaperQuestionCellKey(0, 1) to rectangularCell(left = 62.0, top = 30.0),
+            ),
+            admissionNumberCells = emptyMap(),
+            debugInfo = listOf("edgeRefinement=active"),
+        )
+
+        val decision = AndroidSolidMarkDetector.matchProjectedQuestionCell(
+            projectedCells = cells,
+            row = 38.0,
+            column = 72.0,
+        )
+
+        assertEquals(AndroidPaperQuestionCellKey(0, 1), decision.match?.key)
+        assertFalse(decision.ambiguous)
+    }
+
+    @Test
+    fun equallyNearProjectedCellsAreAmbiguous() {
+        val cells = AndroidPaperProjectedCells(
+            questionCells = mapOf(
+                AndroidPaperQuestionCellKey(0, 0) to rectangularCell(left = 20.0, top = 30.0),
+                AndroidPaperQuestionCellKey(0, 1) to rectangularCell(left = 40.0, top = 30.0),
+            ),
+            admissionNumberCells = emptyMap(),
+            debugInfo = listOf("edgeRefinement=active"),
+        )
+
+        val decision = AndroidSolidMarkDetector.matchProjectedQuestionCell(
+            projectedCells = cells,
+            row = 38.0,
+            column = 40.0,
+        )
+
+        assertNull(decision.match)
+        assertTrue(decision.ambiguous)
+    }
+
+    @Test
+    fun pointInsideBoundingBoxButOutsideSkewedProjectedCellMatchesNothing() {
+        val skewed = MiniProgramCell(
+            row = 0,
+            column = 0,
+            leftTop = MiniProgramGridPoint(row = 30.0, column = 30.0),
+            rightTop = MiniProgramGridPoint(row = 30.0, column = 50.0),
+            leftBottom = MiniProgramGridPoint(row = 50.0, column = 40.0),
+            rightBottom = MiniProgramGridPoint(row = 50.0, column = 60.0),
+        )
+        val cells = AndroidPaperProjectedCells(
+            questionCells = mapOf(AndroidPaperQuestionCellKey(0, 0) to skewed),
+            admissionNumberCells = emptyMap(),
+            debugInfo = emptyList(),
+        )
+
+        val decision = AndroidSolidMarkDetector.matchProjectedQuestionCell(
+            projectedCells = cells,
+            row = 49.0,
+            column = 31.0,
+        )
+
+        assertNull(decision.match)
+        assertFalse(decision.ambiguous)
+    }
+
+    private fun rectangularCell(left: Double, top: Double) = MiniProgramCell(
+        row = 0,
+        column = 0,
+        leftTop = MiniProgramGridPoint(top, left),
+        rightTop = MiniProgramGridPoint(top, left + 20.0),
+        leftBottom = MiniProgramGridPoint(top + 16.0, left),
+        rightBottom = MiniProgramGridPoint(top + 16.0, left + 20.0),
+    )
 }
